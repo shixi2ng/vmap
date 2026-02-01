@@ -47,4 +47,18 @@
 
     </LinearLayout>
 
+    <ImageButton
+        android:id="@+id/btnRecenter"
+        android:layout_width="48dp"
+        android:layout_height="48dp"
+        android:layout_marginEnd="24dp"
+        android:layout_marginBottom="24dp"
+        android:background="@drawable/bg_retro_panel"
+        android:contentDescription="@string/recenter_map"
+        android:padding="10dp"
+        android:src="@drawable/ic_compass_rose"
+        app:tint="#5D4037"
+        app:layout_constraintBottom_toTopOf="@id/coordsContainer"
+        app:layout_constraintEnd_toEndOf="parent" />
+
 </androidx.constraintlayout.widget.ConstraintLayout>

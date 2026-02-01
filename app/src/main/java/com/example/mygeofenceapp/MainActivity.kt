@@ -9,6 +9,7 @@ import android.location.LocationManager
 import android.os.Bundle
 import android.widget.TextView
 import android.widget.Toast
+import android.widget.ImageButton
 import android.webkit.WebView
 import android.webkit.WebViewClient
 import androidx.appcompat.app.AlertDialog
@@ -23,7 +24,12 @@ class MainActivity : AppCompatActivity(), LocationListener {
 
     private lateinit var mapWebView: WebView
     private lateinit var tvCoordinates: TextView
+    private lateinit var btnRecenter: ImageButton
     private lateinit var locationManager: LocationManager
+    private var mapReady = false
+    private var pendingLocation: Location? = null
+    private var lastLocation: Location? = null
+    private var pendingRecenter = false
     private val mapHtml = """
         <!DOCTYPE html>
         <html lang="zh-CN">
@@ -61,6 +67,9 @@ class MainActivity : AppCompatActivity(), LocationListener {
                 zoomControl: true,
                 attributionControl: true,
               }).setView([39.9042, 116.4074], 15);
+
+              let userMarker = null;
+              let hasCentered = false;
         
               L.tileLayer("https://{s}.tile.openstreetmap.fr/hot/{z}/{x}/{y}.png", {
                 subdomains: ["a", "b", "c"],
@@ -68,6 +77,32 @@ class MainActivity : AppCompatActivity(), LocationListener {
                 attribution:
                   '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors, HOT',
               }).addTo(map);
+
+              function updateLocation(lat, lon) {
+                const latLng = [lat, lon];
+                if (!userMarker) {
+                  userMarker = L.circleMarker(latLng, {
+                    radius: 8,
+                    color: "#1e88e5",
+                    weight: 3,
+                    fillColor: "#90caf9",
+                    fillOpacity: 0.9,
+                  }).addTo(map);
+                } else {
+                  userMarker.setLatLng(latLng);
+                }
+                if (!hasCentered) {
+                  map.setView(latLng, 17);
+                  hasCentered = true;
+                }
+              }
+
+              function centerOnUser() {
+                if (!userMarker) {
+                  return;
+                }
+                map.setView(userMarker.getLatLng(), map.getZoom());
+              }
             </script>
           </body>
         </html>
@@ -88,8 +123,10 @@ class MainActivity : AppCompatActivity(), LocationListener {
 
         mapWebView = findViewById(R.id.mapView)
         tvCoordinates = findViewById(R.id.tvCoordinates)
+        btnRecenter = findViewById(R.id.btnRecenter)
 
         setupMap()
+        setupRecenter()
         checkPermissions()
     }
 
@@ -98,7 +135,18 @@ class MainActivity : AppCompatActivity(), LocationListener {
         mapWebView.settings.domStorageEnabled = true
         mapWebView.settings.allowFileAccess = true
         mapWebView.settings.allowContentAccess = true
-        mapWebView.webViewClient = WebViewClient()
+        mapWebView.webViewClient = object : WebViewClient() {
+            override fun onPageFinished(view: WebView, url: String) {
+                super.onPageFinished(view, url)
+                mapReady = true
+                pendingLocation?.let { updateMapLocation(it) }
+                pendingLocation = null
+                if (pendingRecenter) {
+                    centerMapOnUser()
+                    pendingRecenter = false
+                }
+            }
+        }
         mapWebView.loadDataWithBaseURL(
             "https://localhost/",
             mapHtml,
@@ -106,6 +154,16 @@ class MainActivity : AppCompatActivity(), LocationListener {
             "utf-8",
             null
         )
+    }
+
+    private fun setupRecenter() {
+        btnRecenter.setOnClickListener {
+            if (lastLocation == null) {
+                Toast.makeText(this, "尚未获取定位信息", Toast.LENGTH_SHORT).show()
+                return@setOnClickListener
+            }
+            centerMapOnUser()
+        }
     }
 
     private fun checkPermissions() {
@@ -159,12 +217,35 @@ class MainActivity : AppCompatActivity(), LocationListener {
         // 1. 更新UI显示的坐标
         val latStr = String.format("%.4f", location.latitude)
         val lonStr = String.format("%.4f", location.longitude)
+        lastLocation = location
         runOnUiThread {
             tvCoordinates.text = "LAT: $latStr  LON: $lonStr"
         }
 
         // 2. 检查电子围栏逻辑 [25, 26]
         checkGeofences(GeoPoint(location.latitude, location.longitude))
+
+        updateMapLocation(location)
+    }
+
+    private fun updateMapLocation(location: Location) {
+        if (!mapReady) {
+            pendingLocation = location
+            return
+        }
+        val script = "updateLocation(${location.latitude}, ${location.longitude});"
+        mapWebView.evaluateJavascript(script, null)
+    }
+
+    private fun centerMapOnUser() {
+        if (!mapReady) {
+            pendingRecenter = true
+            return
+        }
+        if (lastLocation == null) {
+            return
+        }
+        mapWebView.evaluateJavascript("centerOnUser();", null)
     }
 
     private fun checkGeofences(userPos: GeoPoint) {
