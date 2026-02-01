@@ -44,6 +44,7 @@ dependencies {
     implementation("org.osmdroid:osmdroid-android:6.1.10")
     // Kotlin 协程 - 用于在后台线程处理地理围栏计算，避免阻塞主线程
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.7.3")
+    implementation("androidx.webkit:webkit:1.10.0")
     implementation(libs.androidx.core.ktx)
     implementation(libs.androidx.appcompat)
     implementation(libs.material)
