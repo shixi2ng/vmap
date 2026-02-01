@@ -7,6 +7,7 @@
       content="width=device-width, initial-scale=1.0, maximum-scale=1.0"
     />
     <title>Map</title>
+    <link rel="stylesheet" href="vendor/leaflet/leaflet.css" />
     <link
       rel="stylesheet"
       href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
@@ -20,34 +21,31 @@
         height: 100%;
         margin: 0;
       }
+      #status {
+        position: absolute;
+        left: 12px;
+        bottom: 12px;
+        background: rgba(0, 0, 0, 0.65);
+        color: #fff;
+        padding: 6px 10px;
+        border-radius: 6px;
+        font-size: 12px;
+        z-index: 1000;
+      }
     </style>
   </head>
   <body>
     <div id="map"></div>
-    <script
-      src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
-      integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo="
-      crossorigin=""
-    ></script>
-    <script src="https://unpkg.com/georaster/dist/georaster.browser.bundle.min.js"></script>
-    <script src="https://unpkg.com/georaster-layer-for-leaflet/dist/georaster-layer-for-leaflet.min.js"></script>
+    <div id="status">TIF: 等待加载...</div>
     <script>
-      const map = L.map("map", {
-        zoomControl: true,
-        attributionControl: true,
-      }).setView([39.9042, 116.4074], 15);
-
-      L.tileLayer("https://{s}.tile.openstreetmap.fr/hot/{z}/{x}/{y}.png", {
-        subdomains: ["a", "b", "c"],
-        maxZoom: 19,
-        attribution:
-          '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors, HOT',
-      }).addTo(map);
-
+      let map = null;
       let userMarker = null;
       let hasCentered = false;
 
       function updateLocation(lat, lon) {
+        if (!map) {
+          return;
+        }
         const latLng = [lat, lon];
         if (!userMarker) {
           userMarker = L.circleMarker(latLng, {
@@ -67,14 +65,58 @@
       }
 
       function centerOnUser() {
-        if (!userMarker) {
+        if (!map || !userMarker) {
           return;
         }
         map.setView(userMarker.getLatLng(), map.getZoom());
       }
 
+      const statusEl = document.getElementById("status");
+
+      function setStatus(text) {
+        if (statusEl) {
+          statusEl.textContent = text;
+        }
+      }
+
+      function loadScript(url) {
+        return new Promise((resolve, reject) => {
+          const script = document.createElement("script");
+          script.src = url;
+          script.async = true;
+          script.onload = () => resolve(url);
+          script.onerror = () => reject(new Error(`脚本加载失败: ${url}`));
+          document.head.appendChild(script);
+        });
+      }
+
+      async function loadScriptsSequential(urls) {
+        let lastError = null;
+        for (const url of urls) {
+          try {
+            setStatus(`加载脚本: ${url}`);
+            await loadScript(url);
+            return url;
+          } catch (error) {
+            lastError = error;
+          }
+        }
+        throw lastError || new Error("脚本加载失败");
+      }
+
       function loadLocalTiff() {
-        fetch("file:///android_res/raw/edi_v7.tif")
+        if (typeof parseGeoraster !== "function") {
+          setStatus("TIF: 解析库未加载");
+          return;
+        }
+        if (typeof GeoRasterLayer !== "function") {
+          setStatus("TIF: 图层库未加载");
+          return;
+        }
+        setStatus("TIF: 加载中...");
+        fetch("https://appassets.androidplatform.net/res/raw/edi_v7.tif", {
+          cache: "no-store",
+        })
           .then((response) => {
             if (!response.ok) {
               throw new Error(`加载本地 TIF 失败: ${response.status}`);
@@ -89,13 +131,69 @@
             });
             layer.addTo(map);
             map.fitBounds(layer.getBounds());
+            setStatus("TIF: 加载成功");
           })
           .catch((error) => {
             console.error(error);
+            setStatus(`TIF: 加载失败 ${error.message || error}`);
           });
       }
 
-      loadLocalTiff();
+      function initMap() {
+        map = L.map("map", {
+          zoomControl: true,
+          attributionControl: true,
+        }).setView([39.9042, 116.4074], 15);
+
+        L.tileLayer("https://{s}.tile.openstreetmap.fr/hot/{z}/{x}/{y}.png", {
+          subdomains: ["a", "b", "c"],
+          maxZoom: 19,
+          attribution:
+            '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors, HOT',
+        }).addTo(map);
+      }
+
+      async function loadLeaflet() {
+        await loadScriptsSequential([
+          "vendor/leaflet/leaflet.js",
+          "https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.js",
+          "https://unpkg.com/leaflet@1.9.4/dist/leaflet.js",
+        ]);
+        if (typeof L === "undefined") {
+          throw new Error("Leaflet 脚本未加载");
+        }
+      }
+
+      async function initRasterLayer() {
+        try {
+          await loadScriptsSequential([
+            "https://cdn.jsdelivr.net/npm/georaster@1.6.1/dist/georaster.browser.bundle.min.js",
+            "https://unpkg.com/georaster@1.6.1/dist/georaster.browser.bundle.min.js",
+          ]);
+          await loadScriptsSequential([
+            "https://cdn.jsdelivr.net/npm/georaster-layer-for-leaflet@3.5.2/dist/georaster-layer-for-leaflet.min.js",
+            "https://unpkg.com/georaster-layer-for-leaflet@3.5.2/dist/georaster-layer-for-leaflet.min.js",
+          ]);
+          setStatus("脚本加载完成，准备解析 TIF");
+          loadLocalTiff();
+        } catch (error) {
+          console.error(error);
+          setStatus(`脚本加载失败: ${error.message || error}`);
+        }
+      }
+
+      async function init() {
+        try {
+          await loadLeaflet();
+          initMap();
+          await initRasterLayer();
+        } catch (error) {
+          console.error(error);
+          setStatus(`Leaflet 加载失败: ${error.message || error}`);
+        }
+      }
+
+      init();
     </script>
   </body>
 </html>
