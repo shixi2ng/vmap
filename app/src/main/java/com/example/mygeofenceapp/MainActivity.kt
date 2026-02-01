@@ -9,6 +9,7 @@ import android.location.LocationManager
 import android.os.Bundle
 import android.widget.TextView
 import android.widget.Toast
+import android.widget.ImageButton
 import android.webkit.WebView
 import android.webkit.WebViewClient
 import androidx.appcompat.app.AlertDialog
@@ -23,55 +24,13 @@ class MainActivity : AppCompatActivity(), LocationListener {
 
     private lateinit var mapWebView: WebView
     private lateinit var tvCoordinates: TextView
+    private lateinit var btnRecenter: ImageButton
     private lateinit var locationManager: LocationManager
-    private val mapHtml = """
-        <!DOCTYPE html>
-        <html lang="zh-CN">
-          <head>
-            <meta charset="utf-8" />
-            <meta
-              name="viewport"
-              content="width=device-width, initial-scale=1.0, maximum-scale=1.0"
-            />
-            <title>Map</title>
-            <link
-              rel="stylesheet"
-              href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
-              integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY="
-              crossorigin=""
-            />
-            <style>
-              html,
-              body,
-              #map {
-                height: 100%;
-                margin: 0;
-              }
-            </style>
-          </head>
-          <body>
-            <div id="map"></div>
-            <script
-              src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
-              integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo="
-              crossorigin=""
-            ></script>
-            <script>
-              const map = L.map("map", {
-                zoomControl: true,
-                attributionControl: true,
-              }).setView([39.9042, 116.4074], 15);
-        
-              L.tileLayer("https://{s}.tile.openstreetmap.fr/hot/{z}/{x}/{y}.png", {
-                subdomains: ["a", "b", "c"],
-                maxZoom: 19,
-                attribution:
-                  '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors, HOT',
-              }).addTo(map);
-            </script>
-          </body>
-        </html>
-    """.trimIndent()
+    private var mapReady = false
+    private var pendingLocation: Location? = null
+    private var lastLocation: Location? = null
+    private var pendingRecenter = false
+    private val mapAssetUrl = "file:///android_asset/map.html"
 
     // 预设的宝藏点数据（示例）
     private val storyPoints = listOf(
@@ -88,8 +47,10 @@ class MainActivity : AppCompatActivity(), LocationListener {
 
         mapWebView = findViewById(R.id.mapView)
         tvCoordinates = findViewById(R.id.tvCoordinates)
+        btnRecenter = findViewById(R.id.btnRecenter)
 
         setupMap()
+        setupRecenter()
         checkPermissions()
     }
 
@@ -98,14 +59,31 @@ class MainActivity : AppCompatActivity(), LocationListener {
         mapWebView.settings.domStorageEnabled = true
         mapWebView.settings.allowFileAccess = true
         mapWebView.settings.allowContentAccess = true
-        mapWebView.webViewClient = WebViewClient()
-        mapWebView.loadDataWithBaseURL(
-            "https://localhost/",
-            mapHtml,
-            "text/html",
-            "utf-8",
-            null
-        )
+        mapWebView.settings.allowFileAccessFromFileURLs = true
+        mapWebView.settings.allowUniversalAccessFromFileURLs = true
+        mapWebView.webViewClient = object : WebViewClient() {
+            override fun onPageFinished(view: WebView, url: String) {
+                super.onPageFinished(view, url)
+                mapReady = true
+                pendingLocation?.let { updateMapLocation(it) }
+                pendingLocation = null
+                if (pendingRecenter) {
+                    centerMapOnUser()
+                    pendingRecenter = false
+                }
+            }
+        }
+        mapWebView.loadUrl(mapAssetUrl)
+    }
+
+    private fun setupRecenter() {
+        btnRecenter.setOnClickListener {
+            if (lastLocation == null) {
+                Toast.makeText(this, "尚未获取定位信息", Toast.LENGTH_SHORT).show()
+                return@setOnClickListener
+            }
+            centerMapOnUser()
+        }
     }
 
     private fun checkPermissions() {
@@ -159,12 +137,35 @@ class MainActivity : AppCompatActivity(), LocationListener {
         // 1. 更新UI显示的坐标
         val latStr = String.format("%.4f", location.latitude)
         val lonStr = String.format("%.4f", location.longitude)
+        lastLocation = location
         runOnUiThread {
             tvCoordinates.text = "LAT: $latStr  LON: $lonStr"
         }
 
         // 2. 检查电子围栏逻辑 [25, 26]
         checkGeofences(GeoPoint(location.latitude, location.longitude))
+
+        updateMapLocation(location)
+    }
+
+    private fun updateMapLocation(location: Location) {
+        if (!mapReady) {
+            pendingLocation = location
+            return
+        }
+        val script = "updateLocation(${location.latitude}, ${location.longitude});"
+        mapWebView.evaluateJavascript(script, null)
+    }
+
+    private fun centerMapOnUser() {
+        if (!mapReady) {
+            pendingRecenter = true
+            return
+        }
+        if (lastLocation == null) {
+            return
+        }
+        mapWebView.evaluateJavascript("centerOnUser();", null)
     }
 
     private fun checkGeofences(userPos: GeoPoint) {
