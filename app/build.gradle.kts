@@ -41,6 +41,7 @@ dependencies {
     implementation("androidx.preference:preference-ktx:1.2.1")
     // OSMDroid - 核心地图引擎 [1, 9]
     // 该库提供了MapView组件及离线瓦片支持
+    implementation("androidx.webkit:webkit:1.10.0")
     implementation("org.osmdroid:osmdroid-android:6.1.10")
     // Kotlin 协程 - 用于在后台线程处理地理围栏计算，避免阻塞主线程
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.7.3")

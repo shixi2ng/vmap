@@ -1,38 +1,146 @@
 <!DOCTYPE html>
 <html lang="zh-CN">
-  <head>
+<head>
     <meta charset="utf-8" />
     <meta
-      name="viewport"
-      content="width=device-width, initial-scale=1.0, maximum-scale=1.0"
+            name="viewport"
+            content="width=device-width, initial-scale=1.0, maximum-scale=1.0"
     />
     <title>Map</title>
+    <link rel="stylesheet" href="leaflet/leaflet.css" />
     <link
-      rel="stylesheet"
-      href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
-      integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY="
-      crossorigin=""
+            rel="stylesheet"
+            href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
+            integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY="
+            crossorigin=""
     />
     <style>
-      html,
-      body,
-      #map {
-        height: 100%;
-        margin: 0;
-      }
+        html,
+        body,
+        #map {
+          height: 100%;
+          margin: 0;
+        }
+        #status {
+          position: absolute;
+          left: 12px;
+          bottom: 12px;
+          background: rgba(0, 0, 0, 0.65);
+          color: #fff;
+          padding: 6px 10px;
+          border-radius: 6px;
+          font-size: 12px;
+          z-index: 1000;
+        }
     </style>
-  </head>
-  <body>
-    <div id="map"></div>
-    <script
-      src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
-      integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo="
-      crossorigin=""
-    ></script>
-    <script src="https://unpkg.com/georaster/dist/georaster.browser.bundle.min.js"></script>
-    <script src="https://unpkg.com/georaster-layer-for-leaflet/dist/georaster-layer-for-leaflet.min.js"></script>
-    <script>
-      const map = L.map("map", {
+</head>
+<body>
+<div id="map"></div>
+<div id="status">TIF: 等待加载...</div>
+<script>
+    let map = null;
+    let userMarker = null;
+    let hasCentered = false;
+
+    function updateLocation(lat, lon) {
+      if (!map) {
+        return;
+      }
+      const latLng = [lat, lon];
+      if (!userMarker) {
+        userMarker = L.circleMarker(latLng, {
+          radius: 8,
+          color: "#1e88e5",
+          weight: 3,
+          fillColor: "#90caf9",
+          fillOpacity: 0.9,
+        }).addTo(map);
+      } else {
+        userMarker.setLatLng(latLng);
+      }
+      if (!hasCentered) {
+        map.setView(latLng, 17);
+        hasCentered = true;
+      }
+    }
+
+    function centerOnUser() {
+      if (!map || !userMarker) {
+        return;
+      }
+      map.setView(userMarker.getLatLng(), map.getZoom());
+    }
+
+    const statusEl = document.getElementById("status");
+
+    function setStatus(text) {
+      if (statusEl) {
+        statusEl.textContent = text;
+      }
+    }
+
+    function loadScript(url) {
+      return new Promise((resolve, reject) => {
+        const script = document.createElement("script");
+        script.src = url;
+        script.async = true;
+        script.onload = () => resolve(url);
+        script.onerror = () => reject(new Error(`脚本加载失败: ${url}`));
+        document.head.appendChild(script);
+      });
+    }
+
+    async function loadScriptsSequential(urls) {
+      let lastError = null;
+      for (const url of urls) {
+        try {
+          setStatus(`加载脚本: ${url}`);
+          await loadScript(url);
+          return url;
+        } catch (error) {
+          lastError = error;
+        }
+      }
+      throw lastError || new Error("脚本加载失败");
+    }
+
+    function loadLocalTiff() {
+      if (typeof parseGeoraster !== "function") {
+        setStatus("TIF: 解析库未加载");
+        return;
+      }
+      if (typeof GeoRasterLayer !== "function") {
+        setStatus("TIF: 图层库未加载");
+        return;
+      }
+      setStatus("TIF: 加载中...");
+      fetch("https://appassets.androidplatform.net/res/raw/edi_v7.tif", {
+        cache: "no-store",
+      })
+        .then((response) => {
+          if (!response.ok) {
+            throw new Error(`加载本地 TIF 失败: ${response.status}`);
+          }
+          return response.arrayBuffer();
+        })
+        .then((arrayBuffer) => parseGeoraster(arrayBuffer))
+        .then((georaster) => {
+          const layer = new GeoRasterLayer({
+            georaster,
+            opacity: 0.7,
+          });
+          layer.addTo(map);
+          map.fitBounds(layer.getBounds());
+          setStatus("TIF: 加载成功");
+        })
+        .catch((error) => {
+          console.error(error);
+          setStatus(`TIF: 加载失败 ${error.message || error}`);
+        });
+    }
+
+    function initMap() {
+      map = L.map("map", {
         zoomControl: true,
         attributionControl: true,
       }).setView([39.9042, 116.4074], 15);
@@ -43,59 +151,47 @@
         attribution:
           '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors, HOT',
       }).addTo(map);
+    }
 
-      let userMarker = null;
-      let hasCentered = false;
-
-      function updateLocation(lat, lon) {
-        const latLng = [lat, lon];
-        if (!userMarker) {
-          userMarker = L.circleMarker(latLng, {
-            radius: 8,
-            color: "#1e88e5",
-            weight: 3,
-            fillColor: "#90caf9",
-            fillOpacity: 0.9,
-          }).addTo(map);
-        } else {
-          userMarker.setLatLng(latLng);
-        }
-        if (!hasCentered) {
-          map.setView(latLng, 17);
-          hasCentered = true;
-        }
+    async function loadLeaflet() {
+      await loadScriptsSequential([
+        "leaflet/leaflet.js",
+      ]);
+      if (typeof L === "undefined") {
+        throw new Error("Leaflet 脚本未加载");
       }
+    }
 
-      function centerOnUser() {
-        if (!userMarker) {
-          return;
-        }
-        map.setView(userMarker.getLatLng(), map.getZoom());
+    async function initRasterLayer() {
+      try {
+        await loadScriptsSequential([
+          "https://cdn.jsdelivr.net/npm/georaster@1.6.0/dist/georaster.browser.bundle.min.js",
+          "https://unpkg.com/georaster@1.6.0/dist/georaster.browser.bundle.min.js",
+        ]);
+        await loadScriptsSequential([
+          "https://cdn.jsdelivr.net/npm/georaster-layer-for-leaflet@3.5.0/dist/georaster-layer-for-leaflet.min.js",
+          "https://unpkg.com/georaster-layer-for-leaflet@3.5.0/dist/georaster-layer-for-leaflet.min.js",
+        ]);
+        setStatus("脚本加载完成，准备解析 TIF");
+        loadLocalTiff();
+      } catch (error) {
+        console.error(error);
+        setStatus(`脚本加载失败: ${error.message || error}`);
       }
+    }
 
-      function loadLocalTiff() {
-        fetch("file:///android_res/raw/edi_v7.tif")
-          .then((response) => {
-            if (!response.ok) {
-              throw new Error(`加载本地 TIF 失败: ${response.status}`);
-            }
-            return response.arrayBuffer();
-          })
-          .then((arrayBuffer) => parseGeoraster(arrayBuffer))
-          .then((georaster) => {
-            const layer = new GeoRasterLayer({
-              georaster,
-              opacity: 0.7,
-            });
-            layer.addTo(map);
-            map.fitBounds(layer.getBounds());
-          })
-          .catch((error) => {
-            console.error(error);
-          });
+    async function init() {
+      try {
+        await loadLeaflet();
+        initMap();
+        await initRasterLayer();
+      } catch (error) {
+        console.error(error);
+        setStatus(`Leaflet 加载失败: ${error.message || error}`);
       }
+    }
 
-      loadLocalTiff();
-    </script>
-  </body>
+    init();
+</script>
+</body>
 </html>

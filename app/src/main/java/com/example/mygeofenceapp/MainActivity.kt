@@ -10,12 +10,16 @@ import android.os.Bundle
 import android.widget.TextView
 import android.widget.Toast
 import android.widget.ImageButton
+import android.webkit.WebResourceRequest
+import android.webkit.WebResourceResponse
+import android.webkit.WebSettings
 import android.webkit.WebView
 import android.webkit.WebViewClient
 import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
+import androidx.webkit.WebViewAssetLoader
 import com.example.mygeofenceapp.R
 import com.example.mygeofenceapp.StoryPoint
 import org.osmdroid.util.GeoPoint
@@ -30,7 +34,8 @@ class MainActivity : AppCompatActivity(), LocationListener {
     private var pendingLocation: Location? = null
     private var lastLocation: Location? = null
     private var pendingRecenter = false
-    private val mapAssetUrl = "file:///android_asset/map.html"
+    private val mapAssetUrl = "https://appassets.androidplatform.net/assets/map.html"
+    private lateinit var assetLoader: WebViewAssetLoader
 
 
     // 预设的宝藏点数据（示例）
@@ -56,13 +61,26 @@ class MainActivity : AppCompatActivity(), LocationListener {
     }
 
     private fun setupMap() {
+        assetLoader = WebViewAssetLoader.Builder()
+            .addPathHandler("/assets/", WebViewAssetLoader.AssetsPathHandler(this))
+            .addPathHandler("/res/", WebViewAssetLoader.ResourcesPathHandler(this))
+            .build()
         mapWebView.settings.javaScriptEnabled = true
         mapWebView.settings.domStorageEnabled = true
         mapWebView.settings.allowFileAccess = true
         mapWebView.settings.allowContentAccess = true
         mapWebView.settings.allowFileAccessFromFileURLs = true
         mapWebView.settings.allowUniversalAccessFromFileURLs = true
+        mapWebView.settings.cacheMode = WebSettings.LOAD_NO_CACHE
+        mapWebView.clearCache(true)
         mapWebView.webViewClient = object : WebViewClient() {
+            override fun shouldInterceptRequest(
+                view: WebView,
+                request: WebResourceRequest
+            ): WebResourceResponse? {
+                return assetLoader.shouldInterceptRequest(request.url)
+            }
+
             override fun onPageFinished(view: WebView, url: String) {
                 super.onPageFinished(view, url)
                 mapReady = true
