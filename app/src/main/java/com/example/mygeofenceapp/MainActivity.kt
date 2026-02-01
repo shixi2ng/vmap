@@ -24,6 +24,54 @@ class MainActivity : AppCompatActivity(), LocationListener {
     private lateinit var mapWebView: WebView
     private lateinit var tvCoordinates: TextView
     private lateinit var locationManager: LocationManager
+    private val mapHtml = """
+        <!DOCTYPE html>
+        <html lang="zh-CN">
+          <head>
+            <meta charset="utf-8" />
+            <meta
+              name="viewport"
+              content="width=device-width, initial-scale=1.0, maximum-scale=1.0"
+            />
+            <title>Map</title>
+            <link
+              rel="stylesheet"
+              href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
+              integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY="
+              crossorigin=""
+            />
+            <style>
+              html,
+              body,
+              #map {
+                height: 100%;
+                margin: 0;
+              }
+            </style>
+          </head>
+          <body>
+            <div id="map"></div>
+            <script
+              src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
+              integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo="
+              crossorigin=""
+            ></script>
+            <script>
+              const map = L.map("map", {
+                zoomControl: true,
+                attributionControl: true,
+              }).setView([39.9042, 116.4074], 15);
+        
+              L.tileLayer("https://{s}.tile.openstreetmap.fr/hot/{z}/{x}/{y}.png", {
+                subdomains: ["a", "b", "c"],
+                maxZoom: 19,
+                attribution:
+                  '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors, HOT',
+              }).addTo(map);
+            </script>
+          </body>
+        </html>
+    """.trimIndent()
 
     // 预设的宝藏点数据（示例）
     private val storyPoints = listOf(
@@ -48,8 +96,16 @@ class MainActivity : AppCompatActivity(), LocationListener {
     private fun setupMap() {
         mapWebView.settings.javaScriptEnabled = true
         mapWebView.settings.domStorageEnabled = true
+        mapWebView.settings.allowFileAccess = true
+        mapWebView.settings.allowContentAccess = true
         mapWebView.webViewClient = WebViewClient()
-        mapWebView.loadUrl("file:///android_asset/map.html")
+        mapWebView.loadDataWithBaseURL(
+            "https://localhost/",
+            mapHtml,
+            "text/html",
+            "utf-8",
+            null
+        )
     }
 
     private fun checkPermissions() {
