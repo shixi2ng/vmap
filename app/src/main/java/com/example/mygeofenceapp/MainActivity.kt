@@ -31,83 +31,7 @@ class MainActivity : AppCompatActivity(), LocationListener {
     private var lastLocation: Location? = null
     private var pendingRecenter = false
     private val mapAssetUrl = "file:///android_asset/map.html"
-    private val mapHtml = """
-        <!DOCTYPE html>
-        <html lang="zh-CN">
-          <head>
-            <meta charset="utf-8" />
-            <meta
-              name="viewport"
-              content="width=device-width, initial-scale=1.0, maximum-scale=1.0"
-            />
-            <title>Map</title>
-            <link
-              rel="stylesheet"
-              href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
-              integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY="
-              crossorigin=""
-            />
-            <style>
-              html,
-              body,
-              #map {
-                height: 100%;
-                margin: 0;
-              }
-            </style>
-          </head>
-          <body>
-            <div id="map"></div>
-            <script
-              src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
-              integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo="
-              crossorigin=""
-            ></script>
-            <script>
-              const map = L.map("map", {
-                zoomControl: true,
-                attributionControl: true,
-              }).setView([39.9042, 116.4074], 15);
 
-              let userMarker = null;
-              let hasCentered = false;
-        
-              L.tileLayer("https://{s}.tile.openstreetmap.fr/hot/{z}/{x}/{y}.png", {
-                subdomains: ["a", "b", "c"],
-                maxZoom: 19,
-                attribution:
-                  '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors, HOT',
-              }).addTo(map);
-
-              function updateLocation(lat, lon) {
-                const latLng = [lat, lon];
-                if (!userMarker) {
-                  userMarker = L.circleMarker(latLng, {
-                    radius: 8,
-                    color: "#1e88e5",
-                    weight: 3,
-                    fillColor: "#90caf9",
-                    fillOpacity: 0.9,
-                  }).addTo(map);
-                } else {
-                  userMarker.setLatLng(latLng);
-                }
-                if (!hasCentered) {
-                  map.setView(latLng, 17);
-                  hasCentered = true;
-                }
-              }
-
-              function centerOnUser() {
-                if (!userMarker) {
-                  return;
-                }
-                map.setView(userMarker.getLatLng(), map.getZoom());
-              }
-            </script>
-          </body>
-        </html>
-    """.trimIndent()
 
     // 预设的宝藏点数据（示例）
     private val storyPoints = listOf(
@@ -151,23 +75,6 @@ class MainActivity : AppCompatActivity(), LocationListener {
             }
         }
         mapWebView.loadUrl(mapAssetUrl)
-    }
-
-    private fun setupRecenter() {
-        btnRecenter.setOnClickListener {
-            if (lastLocation == null) {
-                Toast.makeText(this, "尚未获取定位信息", Toast.LENGTH_SHORT).show()
-                return@setOnClickListener
-            }
-            centerMapOnUser()
-        }
-        mapWebView.loadDataWithBaseURL(
-            "https://localhost/",
-            mapHtml,
-            "text/html",
-            "utf-8",
-            null
-        )
     }
 
     private fun setupRecenter() {

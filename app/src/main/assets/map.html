@@ -74,7 +74,7 @@
       }
 
       function loadLocalTiff() {
-        fetch("2021_v3_modified.tif")
+        fetch("file:///android_res/raw/edi_v7.tif")
           .then((response) => {
             if (!response.ok) {
               throw new Error(`加载本地 TIF 失败: ${response.status}`);

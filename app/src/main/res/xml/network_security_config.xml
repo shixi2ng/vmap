@@ -1,8 +1,11 @@
 <?xml version="1.0" encoding="utf-8"?>
 <network-security-config>
-    <base-config cleartextTrafficPermitted="true">
-        <trust-anchors>
-            <certificates src="system" />
-        </trust-anchors>
-    </base-config>
+    <!-- 推荐：仅允许指定瓦片服务器的明文请求（安全可控） -->
+    <domain-config cleartextTrafficPermitted="true">
+        <domain includeSubdomains="true">tile.openstreetmap.org</domain>
+        <domain includeSubdomains="true">opentopomap.org</domain>
+    </domain-config>
+
+    <!-- 测试环境可选：允许所有明文请求（生产环境不推荐，存在安全风险） -->
+    <!-- <base-config cleartextTrafficPermitted="true" /> -->
 </network-security-config>
