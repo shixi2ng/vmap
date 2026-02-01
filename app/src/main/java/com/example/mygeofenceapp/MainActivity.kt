@@ -30,6 +30,7 @@ class MainActivity : AppCompatActivity(), LocationListener {
     private var pendingLocation: Location? = null
     private var lastLocation: Location? = null
     private var pendingRecenter = false
+    private val mapAssetUrl = "file:///android_asset/map.html"
     private val mapHtml = """
         <!DOCTYPE html>
         <html lang="zh-CN">
@@ -135,6 +136,8 @@ class MainActivity : AppCompatActivity(), LocationListener {
         mapWebView.settings.domStorageEnabled = true
         mapWebView.settings.allowFileAccess = true
         mapWebView.settings.allowContentAccess = true
+        mapWebView.settings.allowFileAccessFromFileURLs = true
+        mapWebView.settings.allowUniversalAccessFromFileURLs = true
         mapWebView.webViewClient = object : WebViewClient() {
             override fun onPageFinished(view: WebView, url: String) {
                 super.onPageFinished(view, url)
@@ -146,6 +149,17 @@ class MainActivity : AppCompatActivity(), LocationListener {
                     pendingRecenter = false
                 }
             }
+        }
+        mapWebView.loadUrl(mapAssetUrl)
+    }
+
+    private fun setupRecenter() {
+        btnRecenter.setOnClickListener {
+            if (lastLocation == null) {
+                Toast.makeText(this, "尚未获取定位信息", Toast.LENGTH_SHORT).show()
+                return@setOnClickListener
+            }
+            centerMapOnUser()
         }
         mapWebView.loadDataWithBaseURL(
             "https://localhost/",
