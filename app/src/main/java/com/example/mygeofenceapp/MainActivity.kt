@@ -3,53 +3,75 @@ package com.example.mygeofenceapp
 import android.Manifest
 import android.content.Intent
 import android.content.pm.PackageManager
-import android.graphics.BitmapFactory
-import android.graphics.drawable.BitmapDrawable
+import android.location.Location
+import android.location.LocationListener
+import android.location.LocationManager
 import android.os.Bundle
 import android.widget.TextView
 import android.widget.Toast
+import android.webkit.WebView
+import android.webkit.WebViewClient
 import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
-import androidx.core.content.res.ResourcesCompat
 import com.example.mygeofenceapp.R
-import com.example.mygeofenceapp.RetroTileSourceFactory
 import com.example.mygeofenceapp.StoryPoint
-import com.example.mygeofenceapp.RetroStyler
-import org.osmdroid.config.Configuration
-import org.osmdroid.tileprovider.tilesource.TileSourceFactory
 import org.osmdroid.util.GeoPoint
-import org.osmdroid.views.MapView
-import org.osmdroid.views.overlay.Polygon
-import org.osmdroid.views.overlay.mylocation.GpsMyLocationProvider
-import org.osmdroid.views.overlay.mylocation.IMyLocationConsumer
-import org.osmdroid.views.overlay.mylocation.IMyLocationProvider
-import org.osmdroid.views.overlay.mylocation.MyLocationNewOverlay
-import java.io.File
 
-val customTileSource = object : org.osmdroid.tileprovider.tilesource.OnlineTileSourceBase(
-    "OpenStreetMap",
-    0, 18, 256, ".png",
-    arrayOf("https://tile.openstreetmap.org/") // 这里只写根路径
-) {
-    override fun getTileURLString(pTileIndex: Long): String {
-        // 使用 osmdroid 自带的方法提取索引，确保坐标正确
-        val z = org.osmdroid.util.MapTileIndex.getZoom(pTileIndex)
-        val x = org.osmdroid.util.MapTileIndex.getX(pTileIndex)
-        val y = org.osmdroid.util.MapTileIndex.getY(pTileIndex)
+class MainActivity : AppCompatActivity(), LocationListener {
 
-        // 返回完整的拼接 URL
-        return "$baseUrl$z/$x/$y.png"
-    }
-}
-
-class MainActivity : AppCompatActivity(), IMyLocationConsumer {
-
-    private lateinit var mapView: MapView
-    private lateinit var locationOverlay: MyLocationNewOverlay
+    private lateinit var mapWebView: WebView
     private lateinit var tvCoordinates: TextView
-    private lateinit var locationProvider: GpsMyLocationProvider
+    private lateinit var locationManager: LocationManager
+    private val mapHtml = """
+        <!DOCTYPE html>
+        <html lang="zh-CN">
+          <head>
+            <meta charset="utf-8" />
+            <meta
+              name="viewport"
+              content="width=device-width, initial-scale=1.0, maximum-scale=1.0"
+            />
+            <title>Map</title>
+            <link
+              rel="stylesheet"
+              href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
+              integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY="
+              crossorigin=""
+            />
+            <style>
+              html,
+              body,
+              #map {
+                height: 100%;
+                margin: 0;
+              }
+            </style>
+          </head>
+          <body>
+            <div id="map"></div>
+            <script
+              src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
+              integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo="
+              crossorigin=""
+            ></script>
+            <script>
+              const map = L.map("map", {
+                zoomControl: true,
+                attributionControl: true,
+              }).setView([39.9042, 116.4074], 15);
+        
+              L.tileLayer("https://{s}.tile.openstreetmap.fr/hot/{z}/{x}/{y}.png", {
+                subdomains: ["a", "b", "c"],
+                maxZoom: 19,
+                attribution:
+                  '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors, HOT',
+              }).addTo(map);
+            </script>
+          </body>
+        </html>
+    """.trimIndent()
 
     // 预设的宝藏点数据（示例）
     private val storyPoints = listOf(
@@ -62,17 +84,9 @@ class MainActivity : AppCompatActivity(), IMyLocationConsumer {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
-        // 1. 初始化 Osmdroid 配置
-        // 必须在 setContentView 之前调用，加载 User-Agent 防止被服务器屏蔽
-        Configuration.getInstance().load(
-            applicationContext,
-            androidx.preference.PreferenceManager.getDefaultSharedPreferences(applicationContext)
-        )
-
-
         setContentView(R.layout.activity_main)
 
-        mapView = findViewById(R.id.mapView)
+        mapWebView = findViewById(R.id.mapView)
         tvCoordinates = findViewById(R.id.tvCoordinates)
 
         setupMap()
@@ -80,29 +94,18 @@ class MainActivity : AppCompatActivity(), IMyLocationConsumer {
     }
 
     private fun setupMap() {
-        // 设置多点触控缩放
-        mapView.setMultiTouchControls(true)
-        mapView.controller.setZoom(18.0)
-
-
-        // 如果离线文件不存在，回退到默认在线地图，但应用复古滤镜
-        mapView.setTileSource(customTileSource)
-        RetroStyler.applySepiaFilter(mapView) // [2]
-
-
-        // 在地图上绘制电子围栏的范围（可选，便于调试）
-        drawGeofences()
-    }
-
-    private fun drawGeofences() {
-        storyPoints.forEach { point ->
-            val circle = Polygon()
-            circle.points = Polygon.pointsAsCircle(point.location, point.radiusMeters)
-            circle.fillPaint.color = 0x225D4037 // 半透明棕色
-            circle.outlinePaint.color = 0xFF5D4037.toInt()
-            circle.strokeWidth = 2f
-            mapView.overlays.add(circle)
-        }
+        mapWebView.settings.javaScriptEnabled = true
+        mapWebView.settings.domStorageEnabled = true
+        mapWebView.settings.allowFileAccess = true
+        mapWebView.settings.allowContentAccess = true
+        mapWebView.webViewClient = WebViewClient()
+        mapWebView.loadDataWithBaseURL(
+            "https://localhost/",
+            mapHtml,
+            "text/html",
+            "utf-8",
+            null
+        )
     }
 
     private fun checkPermissions() {
@@ -128,37 +131,40 @@ class MainActivity : AppCompatActivity(), IMyLocationConsumer {
     }
 
     private fun initLocation() {
-        locationProvider = GpsMyLocationProvider(this)
-        // 添加自定义的位置更新监听器
-        locationProvider.startLocationProvider(this)
-
-        locationOverlay = MyLocationNewOverlay(locationProvider, mapView)
-        locationOverlay.enableMyLocation()
-        locationOverlay.enableFollowLocation() // 跟随模式
-
-        // 更换为复古风格的玩家图标 [21, 22, 23]
-        // 需准备 ic_retro_player.png 资源
-        val iconDrawable = ResourcesCompat.getDrawable(resources, R.drawable.ic_retro_player, null)
-        val iconBitmap = (iconDrawable as BitmapDrawable).bitmap
-        locationOverlay.setPersonIcon(iconBitmap)
-        locationOverlay.setDirectionArrow(iconBitmap, iconBitmap)
-
-        mapView.overlays.add(locationOverlay)
+        locationManager = getSystemService(LOCATION_SERVICE) as LocationManager
+        if (ContextCompat.checkSelfPermission(this, Manifest.permission.ACCESS_FINE_LOCATION)
+            != PackageManager.PERMISSION_GRANTED
+        ) {
+            return
+        }
+        if (locationManager.isProviderEnabled(LocationManager.GPS_PROVIDER)) {
+            locationManager.requestLocationUpdates(
+                LocationManager.GPS_PROVIDER,
+                2000L,
+                5f,
+                this
+            )
+        }
+        if (locationManager.isProviderEnabled(LocationManager.NETWORK_PROVIDER)) {
+            locationManager.requestLocationUpdates(
+                LocationManager.NETWORK_PROVIDER,
+                5000L,
+                10f,
+                this
+            )
+        }
     }
 
-    // 实现 IMyLocationConsumer 接口，获取实时位置回调 [24]
-    override fun onLocationChanged(location: android.location.Location?, source: IMyLocationProvider?) {
-        location?.let { loc ->
-            // 1. 更新UI显示的坐标
-            val latStr = String.format("%.4f", loc.latitude)
-            val lonStr = String.format("%.4f", loc.longitude)
-            runOnUiThread {
-                tvCoordinates.text = "LAT: $latStr  LON: $lonStr"
-            }
-
-            // 2. 检查电子围栏逻辑 [25, 26]
-            checkGeofences(GeoPoint(loc.latitude, loc.longitude))
+    override fun onLocationChanged(location: Location) {
+        // 1. 更新UI显示的坐标
+        val latStr = String.format("%.4f", location.latitude)
+        val lonStr = String.format("%.4f", location.longitude)
+        runOnUiThread {
+            tvCoordinates.text = "LAT: $latStr  LON: $lonStr"
         }
+
+        // 2. 检查电子围栏逻辑 [25, 26]
+        checkGeofences(GeoPoint(location.latitude, location.longitude))
     }
 
     private fun checkGeofences(userPos: GeoPoint) {
@@ -198,12 +204,13 @@ class MainActivity : AppCompatActivity(), IMyLocationConsumer {
 
     override fun onResume() {
         super.onResume()
-        mapView.onResume()
     }
 
     override fun onPause() {
         super.onPause()
-        mapView.onPause()
+        if (::locationManager.isInitialized) {
+            locationManager.removeUpdates(this)
+        }
         // 注意：实际生产中应考虑在此处暂停位置更新以省电，但为了游戏连续性需谨慎处理
     }
 }
