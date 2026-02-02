@@ -184,7 +184,7 @@ class MainActivity : AppCompatActivity(), LocationListener {
         if (lastLocation == null) {
             return
         }
-        mapWebView.evaluateJavascript("centerOnUser();", null)
+        mapWebView.evaluateJavascript("centerOnUser(16);", null)
     }
 
     private fun checkGeofences(userPos: GeoPoint) {

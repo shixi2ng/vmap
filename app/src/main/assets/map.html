@@ -32,29 +32,54 @@
           font-size: 12px;
           z-index: 1000;
         }
+                #tile-toggle {
+          position: absolute;
+          right: 12px;
+          top: 12px;
+          background: rgba(0, 0, 0, 0.65);
+          color: #fff;
+          padding: 6px 10px;
+          border-radius: 6px;
+          font-size: 12px;
+          z-index: 1000;
+          display: flex;
+          align-items: center;
+          gap: 6px;
+        }
+        #tile-toggle input {
+          margin: 0;
+        }
     </style>
 </head>
 <body>
 <div id="map"></div>
 <div id="status">TIF: 等待加载...</div>
+<label id="tile-toggle">
+    <input id="tile-toggle-input" type="checkbox" checked />
+    Edinburgh in 1844
+</label>
+<button id="tile-fit" type="button">定位瓦片</button>
 <script>
     let map = null;
     let userMarker = null;
     let hasCentered = false;
+    let userIcon = null;
 
+    const GEO_CONFIG = {
+      tileSize: 256,
+      localTileEnabled: true,
+      localTileUrl: "https://appassets.androidplatform.net/assets/tiles/{z}/{x}/{y}.png",
+      localTileCrs: "EPSG:3395",
+      localTileCrsDef: "+proj=merc +lon_0=0 +k=1 +x_0=0 +y_0=0 +datum=WGS84 +units=m +no_defs",
+      localTileBounds: [-20037508.3427892, -20037508.3427892, 20037508.3427892, 20037508.3427892],
+    };
     function updateLocation(lat, lon) {
       if (!map) {
         return;
       }
       const latLng = [lat, lon];
       if (!userMarker) {
-        userMarker = L.circleMarker(latLng, {
-          radius: 8,
-          color: "#1e88e5",
-          weight: 3,
-          fillColor: "#90caf9",
-          fillOpacity: 0.9,
-        }).addTo(map);
+        userMarker = L.marker(latLng, { icon: userIcon }).addTo(map);
       } else {
         userMarker.setLatLng(latLng);
       }
@@ -64,19 +89,50 @@
       }
     }
 
-    function centerOnUser() {
+    function centerOnUser(zoom) {
       if (!map || !userMarker) {
         return;
       }
-      map.setView(userMarker.getLatLng(), map.getZoom());
+      const targetZoom = Number.isFinite(zoom) ? zoom : map.getZoom();
+      map.setView(userMarker.getLatLng(), targetZoom);
     }
 
     const statusEl = document.getElementById("status");
+    const tileFitButton = document.getElementById("tile-fit");
+    const tileToggleInput = document.getElementById("tile-toggle-input");
+
+    function setLocalTilesVisible(visible) {
+      if (!map || !rasterLayer) {
+        return;
+      }
+      if (visible) {
+        if (!map.hasLayer(rasterLayer)) {
+          rasterLayer.addTo(map);
+        }
+      } else if (map.hasLayer(rasterLayer)) {
+        map.removeLayer(rasterLayer);
+      }
+    }
+
 
     function setStatus(text) {
       if (statusEl) {
         statusEl.textContent = text;
       }
+    }
+
+        function getLocalTileBounds() {
+      if (!map || !GEO_CONFIG.localTileBounds) {
+        return null;
+      }
+      const [minX, minY, maxX, maxY] = GEO_CONFIG.localTileBounds;
+      const crs = map.options.crs;
+      if (!crs || typeof crs.unproject !== "function") {
+        return null;
+      }
+      const southWest = crs.unproject(L.point(minX, minY));
+      const northEast = crs.unproject(L.point(maxX, maxY));
+      return L.latLngBounds(southWest, northEast);
     }
 
     function loadScript(url) {
@@ -104,39 +160,25 @@
       throw lastError || new Error("脚本加载失败");
     }
 
-    function loadLocalTiff() {
-      if (typeof parseGeoraster !== "function") {
-        setStatus("TIF: 解析库未加载");
+    function loadLocalTileLayer() {
+      if (!map) {
         return;
       }
-      if (typeof GeoRasterLayer !== "function") {
-        setStatus("TIF: 图层库未加载");
+      const { localTileUrl, tileSize } = GEO_CONFIG;
+      if (!localTileUrl) {
+        setStatus("本地瓦片: 配置不完整");
         return;
       }
-      setStatus("TIF: 加载中...");
-      fetch("https://appassets.androidplatform.net/res/raw/edi_v7.tif", {
-        cache: "no-store",
-      })
-        .then((response) => {
-          if (!response.ok) {
-            throw new Error(`加载本地 TIF 失败: ${response.status}`);
-          }
-          return response.arrayBuffer();
-        })
-        .then((arrayBuffer) => parseGeoraster(arrayBuffer))
-        .then((georaster) => {
-          const layer = new GeoRasterLayer({
-            georaster,
-            opacity: 0.7,
-          });
-          layer.addTo(map);
-          map.fitBounds(layer.getBounds());
-          setStatus("TIF: 加载成功");
-        })
-        .catch((error) => {
-          console.error(error);
-          setStatus(`TIF: 加载失败 ${error.message || error}`);
-        });
+
+      setStatus("本地瓦片: 加载中...");
+      rasterLayer = L.tileLayer(localTileUrl, {
+        tileSize,
+        maxZoom: 18,
+        tms: false,
+      });
+
+      rasterLayer.addTo(map);
+      setStatus("本地瓦片: 已加载");
     }
 
     function initMap() {
@@ -160,19 +202,20 @@
       if (typeof L === "undefined") {
         throw new Error("Leaflet 脚本未加载");
       }
+      userIcon = L.icon({
+        iconUrl: "https://appassets.androidplatform.net/res/drawable/cursor.png",
+        iconSize: [100, 100],
+        iconAnchor: [50, 50],
+      });
     }
 
     async function initRasterLayer() {
       try {
-        await loadScriptsSequential([
-          "https://cdn.jsdelivr.net/npm/georaster@1.6.0/dist/georaster.browser.bundle.min.js",
-          "https://unpkg.com/georaster@1.6.0/dist/georaster.browser.bundle.min.js",
-        ]);
-        await loadScriptsSequential([
-          "https://cdn.jsdelivr.net/npm/georaster-layer-for-leaflet@3.5.0/dist/georaster-layer-for-leaflet.min.js",
-          "https://unpkg.com/georaster-layer-for-leaflet@3.5.0/dist/georaster-layer-for-leaflet.min.js",
-        ]);
-        setStatus("脚本加载完成，准备解析 TIF");
+        if (GEO_CONFIG.localTileEnabled) {
+          loadLocalTileLayer();
+          return;
+        }
+        setStatus("脚本加载完成，准备加载本地瓦片");
         loadLocalTiff();
       } catch (error) {
         console.error(error);
@@ -185,6 +228,12 @@
         await loadLeaflet();
         initMap();
         await initRasterLayer();
+        if (tileToggleInput) {
+          tileToggleInput.checked = GEO_CONFIG.localTileEnabled;
+          tileToggleInput.addEventListener("change", (event) => {
+            setLocalTilesVisible(event.target.checked);
+          });
+        }
       } catch (error) {
         console.error(error);
         setStatus(`Leaflet 加载失败: ${error.message || error}`);
