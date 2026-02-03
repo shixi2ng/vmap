@@ -1,4 +1,5 @@
 <resources>
     <string name="app_name">Lovetrip</string>
     <string name="recenter_map">Recentre</string>
+    <string name="toggle_track">Toggle track recording</string>
 </resources>

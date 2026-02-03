@@ -23,19 +23,28 @@ import androidx.webkit.WebViewAssetLoader
 import com.example.mygeofenceapp.R
 import com.example.mygeofenceapp.StoryPoint
 import org.osmdroid.util.GeoPoint
+import java.io.File
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
 
 class MainActivity : AppCompatActivity(), LocationListener {
 
     private lateinit var mapWebView: WebView
     private lateinit var tvCoordinates: TextView
     private lateinit var btnRecenter: ImageButton
+    private lateinit var btnTrack: ImageButton
     private lateinit var locationManager: LocationManager
     private var mapReady = false
     private var pendingLocation: Location? = null
     private var lastLocation: Location? = null
     private var pendingRecenter = false
+    private var pendingTrackStart = false
     private val mapAssetUrl = "https://appassets.androidplatform.net/assets/map.html"
     private lateinit var assetLoader: WebViewAssetLoader
+    private var isTracking = false
+    private val trackPoints = mutableListOf<Location>()
+    private var trackStartTime: Long? = null
 
 
     // 预设的宝藏点数据（示例）
@@ -54,9 +63,11 @@ class MainActivity : AppCompatActivity(), LocationListener {
         mapWebView = findViewById(R.id.mapView)
         tvCoordinates = findViewById(R.id.tvCoordinates)
         btnRecenter = findViewById(R.id.btnRecenter)
+        btnTrack = findViewById(R.id.btnTrack)
 
         setupMap()
         setupRecenter()
+        setupTrackToggle()
         checkPermissions()
     }
 
@@ -90,6 +101,13 @@ class MainActivity : AppCompatActivity(), LocationListener {
                     centerMapOnUser()
                     pendingRecenter = false
                 }
+                if (pendingTrackStart) {
+                    startTrackLineOnMap()
+                    pendingTrackStart = false
+                }
+                if (isTracking) {
+                    syncTrackPointsToMap()
+                }
             }
         }
         mapWebView.loadUrl(mapAssetUrl)
@@ -102,6 +120,16 @@ class MainActivity : AppCompatActivity(), LocationListener {
                 return@setOnClickListener
             }
             centerMapOnUser()
+        }
+    }
+
+    private fun setupTrackToggle() {
+        btnTrack.setOnClickListener {
+            if (isTracking) {
+                stopTracking()
+            } else {
+                startTracking()
+            }
         }
     }
 
@@ -165,6 +193,9 @@ class MainActivity : AppCompatActivity(), LocationListener {
         checkGeofences(GeoPoint(location.latitude, location.longitude))
 
         updateMapLocation(location)
+        if (isTracking) {
+            appendTrackingPoint(location)
+        }
     }
 
     private fun updateMapLocation(location: Location) {
@@ -185,6 +216,96 @@ class MainActivity : AppCompatActivity(), LocationListener {
             return
         }
         mapWebView.evaluateJavascript("centerOnUser(16);", null)
+    }
+
+    private fun startTracking() {
+        isTracking = true
+        trackStartTime = System.currentTimeMillis()
+        trackPoints.clear()
+        btnTrack.setImageResource(R.drawable.ic_track_stop)
+        if (mapReady) {
+            startTrackLineOnMap()
+        } else {
+            pendingTrackStart = true
+        }
+        lastLocation?.let { appendTrackingPoint(it) }
+        Toast.makeText(this, "开始记录行走轨迹", Toast.LENGTH_SHORT).show()
+    }
+
+    private fun stopTracking() {
+        isTracking = false
+        pendingTrackStart = false
+        trackStartTime = trackStartTime ?: System.currentTimeMillis()
+        btnTrack.setImageResource(R.drawable.ic_track_play)
+        if (mapReady) {
+            mapWebView.evaluateJavascript("finishTrackLine();", null)
+        }
+        val geoJsonFile = writeTrackGeoJson()
+        val message = if (geoJsonFile != null) {
+            "轨迹已保存：${geoJsonFile.name}"
+        } else {
+            "轨迹记录已停止"
+        }
+        Toast.makeText(this, message, Toast.LENGTH_LONG).show()
+    }
+
+    private fun appendTrackingPoint(location: Location) {
+        trackPoints.add(Location(location))
+        if (mapReady) {
+            val script = "addTrackPoint(${location.latitude}, ${location.longitude});"
+            mapWebView.evaluateJavascript(script, null)
+        }
+    }
+
+    private fun startTrackLineOnMap() {
+        mapWebView.evaluateJavascript("startTrackLine();", null)
+    }
+
+    private fun syncTrackPointsToMap() {
+        mapWebView.evaluateJavascript("startTrackLine();", null)
+        trackPoints.forEach { point ->
+            val script = "addTrackPoint(${point.latitude}, ${point.longitude});"
+            mapWebView.evaluateJavascript(script, null)
+        }
+    }
+
+    private fun writeTrackGeoJson(): File? {
+        val startTime = trackStartTime ?: return null
+        val formatter = SimpleDateFormat("yyyyMMdd_HHmmss", Locale.getDefault())
+        val fileName = "${formatter.format(Date(startTime))}.geojson"
+        val file = File(filesDir, fileName)
+        val startTimeText = formatter.format(Date(startTime))
+        val endTimeText = formatter.format(Date())
+        val coordinates = buildString {
+            append("[")
+            trackPoints.forEachIndexed { index, point ->
+                if (index > 0) {
+                    append(",")
+                }
+                append("[${point.longitude},${point.latitude}]")
+            }
+            append("]")
+        }
+        val geoJson = """
+            {
+              "type": "FeatureCollection",
+              "features": [
+                {
+                  "type": "Feature",
+                  "properties": {
+                    "startTime": "$startTimeText",
+                    "endTime": "$endTimeText"
+                  },
+                  "geometry": {
+                    "type": "LineString",
+                    "coordinates": $coordinates
+                  }
+                }
+              ]
+            }
+        """.trimIndent()
+        file.writeText(geoJson)
+        return file
     }
 
     private fun checkGeofences(userPos: GeoPoint) {

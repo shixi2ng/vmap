@@ -64,6 +64,9 @@
     let userMarker = null;
     let hasCentered = false;
     let userIcon = null;
+    let trackPolyline = null;
+    let trackPoints = [];
+    let rasterLayer = null;
 
     const GEO_CONFIG = {
       tileSize: 256,
@@ -95,6 +98,39 @@
       }
       const targetZoom = Number.isFinite(zoom) ? zoom : map.getZoom();
       map.setView(userMarker.getLatLng(), targetZoom);
+    }
+
+    function startTrackLine() {
+      if (!map) {
+        return;
+      }
+      trackPoints = [];
+      if (trackPolyline) {
+        map.removeLayer(trackPolyline);
+      }
+      trackPolyline = L.polyline(trackPoints, {
+        color: "#F4A6A6",
+        weight: 4,
+        opacity: 0.9,
+        dashArray: "8 8",
+        lineJoin: "round",
+      }).addTo(map);
+    }
+
+    function addTrackPoint(lat, lon) {
+      if (!map || !trackPolyline) {
+        return;
+      }
+      const latLng = [lat, lon];
+      trackPoints.push(latLng);
+      trackPolyline.setLatLngs(trackPoints);
+    }
+
+    function finishTrackLine() {
+      if (!map || !trackPolyline) {
+        return;
+      }
+      trackPolyline.setLatLngs(trackPoints);
     }
 
     const statusEl = document.getElementById("status");

@@ -63,4 +63,18 @@
         app:layout_constraintBottom_toTopOf="@id/coordsContainer"
         app:layout_constraintEnd_toEndOf="parent" />
 
+    <ImageButton
+        android:id="@+id/btnTrack"
+        android:layout_width="48dp"
+        android:layout_height="48dp"
+        android:layout_marginEnd="20dp"
+        android:layout_marginBottom="12dp"
+        android:background="@drawable/bg_retro_panel"
+        android:contentDescription="@string/toggle_track"
+        android:padding="10dp"
+        android:src="@drawable/ic_track_play"
+        app:tint="#5D4037"
+        app:layout_constraintBottom_toTopOf="@id/btnRecenter"
+        app:layout_constraintEnd_toEndOf="parent" />
+
 </androidx.constraintlayout.widget.ConstraintLayout>
