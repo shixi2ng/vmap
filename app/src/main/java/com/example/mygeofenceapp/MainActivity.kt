@@ -215,7 +215,7 @@ class MainActivity : AppCompatActivity(), LocationListener {
         if (lastLocation == null) {
             return
         }
-        mapWebView.evaluateJavascript("centerOnUser(16);", null)
+        mapWebView.evaluateJavascript("centerOnUser(17);", null)
     }
 
     private fun startTracking() {
