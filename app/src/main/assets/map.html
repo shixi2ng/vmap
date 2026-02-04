@@ -67,6 +67,7 @@
     let trackPolyline = null;
     let trackPoints = [];
     let rasterLayer = null;
+    let storyAreaLayers = [];
 
     const GEO_CONFIG = {
       tileSize: 256,
@@ -131,6 +132,22 @@
         return;
       }
       trackPolyline.setLatLngs(trackPoints);
+    }
+
+    function renderStoryArea(latLngs, label) {
+      if (!map || !Array.isArray(latLngs)) {
+        return;
+      }
+      const polygon = L.polygon(latLngs, {
+        color: "#D97A7A",
+        weight: 2,
+        fillColor: "#F4A6A6",
+        fillOpacity: 0.2,
+      }).addTo(map);
+      if (label) {
+        polygon.bindTooltip(label, { direction: "top" });
+      }
+      storyAreaLayers.push(polygon);
     }
 
     const statusEl = document.getElementById("status");
