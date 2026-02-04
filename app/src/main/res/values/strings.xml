@@ -2,4 +2,5 @@
     <string name="app_name">Lovetrip</string>
     <string name="recenter_map">Recentre</string>
     <string name="toggle_track">Toggle track recording</string>
+    <string name="memory_button">回忆</string>
 </resources>

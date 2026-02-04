@@ -7,6 +7,7 @@ import android.location.Location
 import android.location.LocationListener
 import android.location.LocationManager
 import android.os.Bundle
+import android.widget.Button
 import android.widget.TextView
 import android.widget.Toast
 import android.widget.ImageButton
@@ -34,6 +35,7 @@ class MainActivity : AppCompatActivity(), LocationListener {
     private lateinit var tvCoordinates: TextView
     private lateinit var btnRecenter: ImageButton
     private lateinit var btnTrack: ImageButton
+    private lateinit var btnMemory: Button
     private lateinit var locationManager: LocationManager
     private var mapReady = false
     private var pendingLocation: Location? = null
@@ -45,14 +47,24 @@ class MainActivity : AppCompatActivity(), LocationListener {
     private var isTracking = false
     private val trackPoints = mutableListOf<Location>()
     private var trackStartTime: Long? = null
+    private var activeStoryPoint: StoryPoint? = null
+    private var storyAreasRendered = false
 
 
     // 预设的宝藏点数据（示例）
     private val storyPoints = listOf(
-        StoryPoint("1", "古老的钟楼", GeoPoint(39.9042, 116.4074), 50.0,
-            "你站在古老的钟楼下，听到了来自百年前的钟声回荡...", R.drawable.img_story_clock),
-        StoryPoint("2", "遗忘的图书馆", GeoPoint(39.9050, 116.4080), 30.0,
-            "尘封的书卷散发着霉味，这里藏着城市的秘密。", R.drawable.img_story_library)
+        StoryPoint(
+            "1",
+            "回忆区域",
+            listOf(
+                GeoPoint(55.947018, -3.187909),
+                GeoPoint(55.947276, -3.186252),
+                GeoPoint(55.947276, -3.186252),
+                GeoPoint(55.947668, -3.188315)
+            ),
+            "你走进了记忆深处，仿佛能听到这片土地曾经的呢喃。",
+            R.drawable.img_story_clock
+        )
     )
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -64,10 +76,12 @@ class MainActivity : AppCompatActivity(), LocationListener {
         tvCoordinates = findViewById(R.id.tvCoordinates)
         btnRecenter = findViewById(R.id.btnRecenter)
         btnTrack = findViewById(R.id.btnTrack)
+        btnMemory = findViewById(R.id.btnMemory)
 
         setupMap()
         setupRecenter()
         setupTrackToggle()
+        setupMemoryButton()
         checkPermissions()
     }
 
@@ -108,6 +122,9 @@ class MainActivity : AppCompatActivity(), LocationListener {
                 if (isTracking) {
                     syncTrackPointsToMap()
                 }
+                if (!storyAreasRendered) {
+                    renderStoryAreasOnMap()
+                }
             }
         }
         mapWebView.loadUrl(mapAssetUrl)
@@ -130,6 +147,19 @@ class MainActivity : AppCompatActivity(), LocationListener {
             } else {
                 startTracking()
             }
+        }
+    }
+
+    private fun setupMemoryButton() {
+        btnMemory.isEnabled = false
+        btnMemory.alpha = 0.5f
+        btnMemory.setOnClickListener {
+            val point = activeStoryPoint
+            if (point == null) {
+                Toast.makeText(this, "进入回忆区域后才能查看", Toast.LENGTH_SHORT).show()
+                return@setOnClickListener
+            }
+            triggerStoryEvent(point)
         }
     }
 
@@ -189,8 +219,8 @@ class MainActivity : AppCompatActivity(), LocationListener {
             tvCoordinates.text = "LAT: $latStr  LON: $lonStr"
         }
 
-        // 2. 检查电子围栏逻辑 [25, 26]
-        checkGeofences(GeoPoint(location.latitude, location.longitude))
+        // 2. 检查电子围栏逻辑
+        updateGeofenceState(GeoPoint(location.latitude, location.longitude))
 
         updateMapLocation(location)
         if (isTracking) {
@@ -308,17 +338,48 @@ class MainActivity : AppCompatActivity(), LocationListener {
         return file
     }
 
-    private fun checkGeofences(userPos: GeoPoint) {
-        storyPoints.forEach { point ->
-            if (!point.isUnlocked) { // 仅检查未解锁的点
-                val distance = userPos.distanceToAsDouble(point.location)
-
-                if (distance <= point.radiusMeters) {
-                    // 触发！
-                    triggerStoryEvent(point)
-                }
-            }
+    private fun updateGeofenceState(userPos: GeoPoint) {
+        val matchedPoint = storyPoints.firstOrNull { isPointInPolygon(userPos, it.polygon) }
+        activeStoryPoint = matchedPoint
+        runOnUiThread {
+            val enabled = matchedPoint != null
+            btnMemory.isEnabled = enabled
+            btnMemory.alpha = if (enabled) 1.0f else 0.5f
         }
+    }
+
+    private fun isPointInPolygon(point: GeoPoint, polygon: List<GeoPoint>): Boolean {
+        if (polygon.size < 3) {
+            return false
+        }
+        var isInside = false
+        var j = polygon.size - 1
+        for (i in polygon.indices) {
+            val pi = polygon[i]
+            val pj = polygon[j]
+            val intersects = ((pi.latitude > point.latitude) != (pj.latitude > point.latitude)) &&
+                (point.longitude < (pj.longitude - pi.longitude) * (point.latitude - pi.latitude) /
+                (pj.latitude - pi.latitude) + pi.longitude)
+            if (intersects) {
+                isInside = !isInside
+            }
+            j = i
+        }
+        return isInside
+    }
+
+    private fun renderStoryAreasOnMap() {
+        if (!mapReady) {
+            return
+        }
+        storyPoints.forEach { point ->
+            val coords = point.polygon.joinToString(prefix = "[", postfix = "]") {
+                "[${it.latitude}, ${it.longitude}]"
+            }
+            val title = point.title.replace("\"", "\\\"")
+            mapWebView.evaluateJavascript("renderStoryArea($coords, \"$title\");", null)
+        }
+        storyAreasRendered = true
     }
 
     private fun triggerStoryEvent(point: StoryPoint) {
