@@ -148,6 +148,60 @@
       }
     }
 
+    function showStoryAreaButton(storyId) {
+      const area = storyAreas[storyId];
+      if (!map || !area) {
+        return;
+      }
+      const escapedStoryId = String(storyId)
+        .replace(/\\/g, "\\\\")
+        .replace(/'/g, "\\'");
+      const buttonHtml = `
+        <button
+          type="button"
+          class="memory-btn"
+          data-story-id="${storyId}"
+          onclick="triggerMemoryFromMap('${escapedStoryId}')"
+        >
+          回忆
+        </button>
+      `;
+      if (!area.popup) {
+        area.popup = L.popup({ closeButton: true, autoPan: true });
+      }
+      area.popup.setLatLng(area.center).setContent(buttonHtml).openOn(map);
+    }
+
+    function setStoryAreaAvailability(storyId, available) {
+      if (!storyId || !(storyId in storyAreaStates)) {
+        return;
+      }
+      storyAreaStates[storyId] = Boolean(available);
+      const area = storyAreas[storyId];
+      if (area && area.popup && map && map.hasLayer(area.popup)) {
+        showStoryAreaButton(storyId);
+      }
+    }
+
+    function triggerMemoryFromMap(storyId) {
+      if (!storyId) {
+        return;
+      }
+      if (storyId && window.Android && typeof window.Android.onMemoryClick === "function") {
+        window.Android.onMemoryClick(storyId);
+      }
+    }
+
+    document.addEventListener("click", (event) => {
+      const target = event.target;
+      if (!target || !target.classList.contains("memory-btn")) {
+        return;
+      }
+      triggerMemoryFromMap(target.getAttribute("data-story-id"));
+    });
+
+    window.triggerMemoryFromMap = triggerMemoryFromMap;
+
     const statusEl = document.getElementById("status");
     const tileFitButton = document.getElementById("tile-fit");
     const tileToggleInput = document.getElementById("tile-toggle-input");
