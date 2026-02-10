@@ -49,6 +49,7 @@ class MainActivity : AppCompatActivity(), LocationListener {
     private val trackPoints = mutableListOf<Location>()
     private var trackStartTime: Long? = null
     private var storyAreasRendered = false
+    private var activeStoryPoint: StoryPoint? = null
 
 
     // 预设的宝藏点数据（示例）
@@ -97,7 +98,6 @@ class MainActivity : AppCompatActivity(), LocationListener {
         mapWebView.settings.allowUniversalAccessFromFileURLs = true
         mapWebView.settings.cacheMode = WebSettings.LOAD_NO_CACHE
         mapWebView.clearCache(true)
-        mapWebView.addJavascriptInterface(MapBridge(), "Android")
         mapWebView.webViewClient = object : WebViewClient() {
             override fun shouldInterceptRequest(
                 view: WebView,
@@ -336,7 +336,7 @@ class MainActivity : AppCompatActivity(), LocationListener {
             }
             val title = point.title.replace("\"", "\\\"")
             mapWebView.evaluateJavascript(
-                "renderStoryArea($coords, \"$title\", \"${point.id}\");",
+                "renderStoryArea($coords, \"$title\");",
                 null
             )
         }

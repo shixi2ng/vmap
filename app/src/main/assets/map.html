@@ -67,8 +67,6 @@
     let trackPolyline = null;
     let trackPoints = [];
     let rasterLayer = null;
-    const storyAreas = {};
-    const storyAreaStates = {};
 
     const GEO_CONFIG = {
       tileSize: 256,
@@ -135,8 +133,8 @@
       trackPolyline.setLatLngs(trackPoints);
     }
 
-    function renderStoryArea(latLngs, label, storyId) {
-      if (!map || !Array.isArray(latLngs) || !storyId) {
+    function renderStoryArea(latLngs, label) {
+      if (!map || !Array.isArray(latLngs)) {
         return;
       }
       const polygon = L.polygon(latLngs, {
@@ -145,15 +143,9 @@
         fillColor: "#F4A6A6",
         fillOpacity: 0.2,
       }).addTo(map);
-      const center = polygon.getBounds().getCenter();
-      storyAreas[storyId] = { polygon, center, popup: null };
-      storyAreaStates[storyId] = false;
       if (label) {
         polygon.bindTooltip(label, { direction: "top" });
       }
-      polygon.on("click", () => {
-        showStoryAreaButton(storyId);
-      });
     }
 
     function showStoryAreaButton(storyId) {
