@@ -161,10 +161,16 @@
       if (!map || !area) {
         return;
       }
-      const enabled = storyAreaStates[storyId];
-      const disabledAttr = enabled ? "" : "disabled";
+      const escapedStoryId = String(storyId)
+        .replace(/\\/g, "\\\\")
+        .replace(/'/g, "\\'");
       const buttonHtml = `
-        <button type="button" class="memory-btn" data-story-id="${storyId}" ${disabledAttr}>
+        <button
+          type="button"
+          class="memory-btn"
+          data-story-id="${storyId}"
+          onclick="triggerMemoryFromMap('${escapedStoryId}')"
+        >
           回忆
         </button>
       `;
@@ -185,19 +191,24 @@
       }
     }
 
+    function triggerMemoryFromMap(storyId) {
+      if (!storyId) {
+        return;
+      }
+      if (storyId && window.Android && typeof window.Android.onMemoryClick === "function") {
+        window.Android.onMemoryClick(storyId);
+      }
+    }
+
     document.addEventListener("click", (event) => {
       const target = event.target;
       if (!target || !target.classList.contains("memory-btn")) {
         return;
       }
-      if (target.disabled) {
-        return;
-      }
-      const storyId = target.getAttribute("data-story-id");
-      if (storyId && window.Android && typeof window.Android.onMemoryClick === "function") {
-        window.Android.onMemoryClick(storyId);
-      }
+      triggerMemoryFromMap(target.getAttribute("data-story-id"));
     });
+
+    window.triggerMemoryFromMap = triggerMemoryFromMap;
 
     const statusEl = document.getElementById("status");
     const tileFitButton = document.getElementById("tile-fit");

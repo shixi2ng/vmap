@@ -7,6 +7,7 @@ import android.location.Location
 import android.location.LocationListener
 import android.location.LocationManager
 import android.os.Bundle
+import android.view.View
 import android.widget.Button
 import android.widget.TextView
 import android.widget.Toast
@@ -75,10 +76,11 @@ class MainActivity : AppCompatActivity(), LocationListener {
         tvCoordinates = findViewById(R.id.tvCoordinates)
         btnRecenter = findViewById(R.id.btnRecenter)
         btnTrack = findViewById(R.id.btnTrack)
+        btnMemory = findViewById(R.id.btnMemory)
         setupMap()
         setupRecenter()
         setupTrackToggle()
-        setupMemoryButton()
+        hideLegacyMemoryButton()
         checkPermissions()
     }
 
@@ -148,17 +150,8 @@ class MainActivity : AppCompatActivity(), LocationListener {
         }
     }
 
-    private fun setupMemoryButton() {
-        btnMemory.isEnabled = false
-        btnMemory.alpha = 0.5f
-        btnMemory.setOnClickListener {
-            val point = activeStoryPoint
-            if (point == null) {
-                Toast.makeText(this, "进入回忆区域后才能查看", Toast.LENGTH_SHORT).show()
-                return@setOnClickListener
-            }
-            triggerStoryEvent(point)
-        }
+    private fun hideLegacyMemoryButton() {
+        btnMemory.visibility = View.GONE
     }
 
     private fun checkPermissions() {
@@ -216,9 +209,6 @@ class MainActivity : AppCompatActivity(), LocationListener {
         runOnUiThread {
             tvCoordinates.text = "LAT: $latStr  LON: $lonStr"
         }
-
-        // 2. 检查电子围栏逻辑
-        updateGeofenceState(GeoPoint(location.latitude, location.longitude))
 
         updateMapLocation(location)
         if (isTracking) {
@@ -336,38 +326,6 @@ class MainActivity : AppCompatActivity(), LocationListener {
         return file
     }
 
-    private fun updateGeofenceState(userPos: GeoPoint) {
-        val availability = storyPoints.associateWith { isPointInPolygon(userPos, it.polygon) }
-        if (mapReady) {
-            availability.forEach { (point, isInside) ->
-                mapWebView.evaluateJavascript(
-                    "setStoryAreaAvailability(\"${point.id}\", ${isInside});",
-                    null
-                )
-            }
-        }
-    }
-
-    private fun isPointInPolygon(point: GeoPoint, polygon: List<GeoPoint>): Boolean {
-        if (polygon.size < 3) {
-            return false
-        }
-        var isInside = false
-        var j = polygon.size - 1
-        for (i in polygon.indices) {
-            val pi = polygon[i]
-            val pj = polygon[j]
-            val intersects = ((pi.latitude > point.latitude) != (pj.latitude > point.latitude)) &&
-                (point.longitude < (pj.longitude - pi.longitude) * (point.latitude - pi.latitude) /
-                (pj.latitude - pi.latitude) + pi.longitude)
-            if (intersects) {
-                isInside = !isInside
-            }
-            j = i
-        }
-        return isInside
-    }
-
     private fun renderStoryAreasOnMap() {
         if (!mapReady) {
             return
@@ -385,6 +343,7 @@ class MainActivity : AppCompatActivity(), LocationListener {
         storyAreasRendered = true
     }
 
+
     private inner class MapBridge {
         @android.webkit.JavascriptInterface
         fun onMemoryClick(storyId: String) {
@@ -392,10 +351,7 @@ class MainActivity : AppCompatActivity(), LocationListener {
             runOnUiThread {
                 triggerStoryEvent(point)
             }
-            val title = point.title.replace("\"", "\\\"")
-            mapWebView.evaluateJavascript("renderStoryArea($coords, \"$title\");", null)
         }
-        storyAreasRendered = true
     }
 
     private fun triggerStoryEvent(point: StoryPoint) {
