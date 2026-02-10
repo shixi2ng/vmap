@@ -45,14 +45,23 @@ class MainActivity : AppCompatActivity(), LocationListener {
     private var isTracking = false
     private val trackPoints = mutableListOf<Location>()
     private var trackStartTime: Long? = null
+    private var storyAreasRendered = false
 
 
     // 预设的宝藏点数据（示例）
     private val storyPoints = listOf(
-        StoryPoint("1", "古老的钟楼", GeoPoint(39.9042, 116.4074), 50.0,
-            "你站在古老的钟楼下，听到了来自百年前的钟声回荡...", R.drawable.img_story_clock),
-        StoryPoint("2", "遗忘的图书馆", GeoPoint(39.9050, 116.4080), 30.0,
-            "尘封的书卷散发着霉味，这里藏着城市的秘密。", R.drawable.img_story_library)
+        StoryPoint(
+            "1",
+            "回忆区域",
+            listOf(
+                GeoPoint(55.947018, -3.187909),
+                GeoPoint(55.947276, -3.186252),
+                GeoPoint(55.947276, -3.186252),
+                GeoPoint(55.947668, -3.188315)
+            ),
+            "你走进了记忆深处，仿佛能听到这片土地曾经的呢喃。",
+            R.drawable.img_story_clock
+        )
     )
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -64,7 +73,6 @@ class MainActivity : AppCompatActivity(), LocationListener {
         tvCoordinates = findViewById(R.id.tvCoordinates)
         btnRecenter = findViewById(R.id.btnRecenter)
         btnTrack = findViewById(R.id.btnTrack)
-
         setupMap()
         setupRecenter()
         setupTrackToggle()
@@ -84,6 +92,7 @@ class MainActivity : AppCompatActivity(), LocationListener {
         mapWebView.settings.allowUniversalAccessFromFileURLs = true
         mapWebView.settings.cacheMode = WebSettings.LOAD_NO_CACHE
         mapWebView.clearCache(true)
+        mapWebView.addJavascriptInterface(MapBridge(), "Android")
         mapWebView.webViewClient = object : WebViewClient() {
             override fun shouldInterceptRequest(
                 view: WebView,
@@ -107,6 +116,9 @@ class MainActivity : AppCompatActivity(), LocationListener {
                 }
                 if (isTracking) {
                     syncTrackPointsToMap()
+                }
+                if (!storyAreasRendered) {
+                    renderStoryAreasOnMap()
                 }
             }
         }
@@ -189,8 +201,8 @@ class MainActivity : AppCompatActivity(), LocationListener {
             tvCoordinates.text = "LAT: $latStr  LON: $lonStr"
         }
 
-        // 2. 检查电子围栏逻辑 [25, 26]
-        checkGeofences(GeoPoint(location.latitude, location.longitude))
+        // 2. 检查电子围栏逻辑
+        updateGeofenceState(GeoPoint(location.latitude, location.longitude))
 
         updateMapLocation(location)
         if (isTracking) {
@@ -308,15 +320,61 @@ class MainActivity : AppCompatActivity(), LocationListener {
         return file
     }
 
-    private fun checkGeofences(userPos: GeoPoint) {
-        storyPoints.forEach { point ->
-            if (!point.isUnlocked) { // 仅检查未解锁的点
-                val distance = userPos.distanceToAsDouble(point.location)
+    private fun updateGeofenceState(userPos: GeoPoint) {
+        val availability = storyPoints.associateWith { isPointInPolygon(userPos, it.polygon) }
+        if (mapReady) {
+            availability.forEach { (point, isInside) ->
+                mapWebView.evaluateJavascript(
+                    "setStoryAreaAvailability(\"${point.id}\", ${isInside});",
+                    null
+                )
+            }
+        }
+    }
 
-                if (distance <= point.radiusMeters) {
-                    // 触发！
-                    triggerStoryEvent(point)
-                }
+    private fun isPointInPolygon(point: GeoPoint, polygon: List<GeoPoint>): Boolean {
+        if (polygon.size < 3) {
+            return false
+        }
+        var isInside = false
+        var j = polygon.size - 1
+        for (i in polygon.indices) {
+            val pi = polygon[i]
+            val pj = polygon[j]
+            val intersects = ((pi.latitude > point.latitude) != (pj.latitude > point.latitude)) &&
+                (point.longitude < (pj.longitude - pi.longitude) * (point.latitude - pi.latitude) /
+                (pj.latitude - pi.latitude) + pi.longitude)
+            if (intersects) {
+                isInside = !isInside
+            }
+            j = i
+        }
+        return isInside
+    }
+
+    private fun renderStoryAreasOnMap() {
+        if (!mapReady) {
+            return
+        }
+        storyPoints.forEach { point ->
+            val coords = point.polygon.joinToString(prefix = "[", postfix = "]") {
+                "[${it.latitude}, ${it.longitude}]"
+            }
+            val title = point.title.replace("\"", "\\\"")
+            mapWebView.evaluateJavascript(
+                "renderStoryArea($coords, \"$title\", \"${point.id}\");",
+                null
+            )
+        }
+        storyAreasRendered = true
+    }
+
+    private inner class MapBridge {
+        @android.webkit.JavascriptInterface
+        fun onMemoryClick(storyId: String) {
+            val point = storyPoints.firstOrNull { it.id == storyId } ?: return
+            runOnUiThread {
+                triggerStoryEvent(point)
             }
         }
     }
