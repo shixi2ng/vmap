@@ -77,4 +77,18 @@
         app:layout_constraintBottom_toTopOf="@id/btnRecenter"
         app:layout_constraintEnd_toEndOf="parent" />
 
+    <Button
+        android:id="@+id/btnMemory"
+        android:layout_width="wrap_content"
+        android:layout_height="48dp"
+        android:layout_marginStart="20dp"
+        android:layout_marginBottom="12dp"
+        android:background="@drawable/bg_retro_panel"
+        android:paddingHorizontal="18dp"
+        android:text="@string/memory_button"
+        android:textColor="#5D4037"
+        android:textStyle="bold"
+        app:layout_constraintBottom_toTopOf="@id/coordsContainer"
+        app:layout_constraintStart_toStartOf="parent" />
+
 </androidx.constraintlayout.widget.ConstraintLayout>

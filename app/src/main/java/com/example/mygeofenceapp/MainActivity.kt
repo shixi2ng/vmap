@@ -7,6 +7,7 @@ import android.location.Location
 import android.location.LocationListener
 import android.location.LocationManager
 import android.os.Bundle
+import android.widget.Button
 import android.widget.TextView
 import android.widget.Toast
 import android.widget.ImageButton
@@ -34,6 +35,7 @@ class MainActivity : AppCompatActivity(), LocationListener {
     private lateinit var tvCoordinates: TextView
     private lateinit var btnRecenter: ImageButton
     private lateinit var btnTrack: ImageButton
+    private lateinit var btnMemory: Button
     private lateinit var locationManager: LocationManager
     private var mapReady = false
     private var pendingLocation: Location? = null
@@ -76,6 +78,7 @@ class MainActivity : AppCompatActivity(), LocationListener {
         setupMap()
         setupRecenter()
         setupTrackToggle()
+        setupMemoryButton()
         checkPermissions()
     }
 
@@ -142,6 +145,19 @@ class MainActivity : AppCompatActivity(), LocationListener {
             } else {
                 startTracking()
             }
+        }
+    }
+
+    private fun setupMemoryButton() {
+        btnMemory.isEnabled = false
+        btnMemory.alpha = 0.5f
+        btnMemory.setOnClickListener {
+            val point = activeStoryPoint
+            if (point == null) {
+                Toast.makeText(this, "进入回忆区域后才能查看", Toast.LENGTH_SHORT).show()
+                return@setOnClickListener
+            }
+            triggerStoryEvent(point)
         }
     }
 
@@ -376,7 +392,10 @@ class MainActivity : AppCompatActivity(), LocationListener {
             runOnUiThread {
                 triggerStoryEvent(point)
             }
+            val title = point.title.replace("\"", "\\\"")
+            mapWebView.evaluateJavascript("renderStoryArea($coords, \"$title\");", null)
         }
+        storyAreasRendered = true
     }
 
     private fun triggerStoryEvent(point: StoryPoint) {
