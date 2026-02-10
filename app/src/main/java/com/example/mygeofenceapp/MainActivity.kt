@@ -47,7 +47,6 @@ class MainActivity : AppCompatActivity(), LocationListener {
     private var isTracking = false
     private val trackPoints = mutableListOf<Location>()
     private var trackStartTime: Long? = null
-    private var activeStoryPoint: StoryPoint? = null
     private var storyAreasRendered = false
 
 
@@ -76,8 +75,6 @@ class MainActivity : AppCompatActivity(), LocationListener {
         tvCoordinates = findViewById(R.id.tvCoordinates)
         btnRecenter = findViewById(R.id.btnRecenter)
         btnTrack = findViewById(R.id.btnTrack)
-        btnMemory = findViewById(R.id.btnMemory)
-
         setupMap()
         setupRecenter()
         setupTrackToggle()
@@ -98,6 +95,7 @@ class MainActivity : AppCompatActivity(), LocationListener {
         mapWebView.settings.allowUniversalAccessFromFileURLs = true
         mapWebView.settings.cacheMode = WebSettings.LOAD_NO_CACHE
         mapWebView.clearCache(true)
+        mapWebView.addJavascriptInterface(MapBridge(), "Android")
         mapWebView.webViewClient = object : WebViewClient() {
             override fun shouldInterceptRequest(
                 view: WebView,
@@ -339,12 +337,14 @@ class MainActivity : AppCompatActivity(), LocationListener {
     }
 
     private fun updateGeofenceState(userPos: GeoPoint) {
-        val matchedPoint = storyPoints.firstOrNull { isPointInPolygon(userPos, it.polygon) }
-        activeStoryPoint = matchedPoint
-        runOnUiThread {
-            val enabled = matchedPoint != null
-            btnMemory.isEnabled = enabled
-            btnMemory.alpha = if (enabled) 1.0f else 0.5f
+        val availability = storyPoints.associateWith { isPointInPolygon(userPos, it.polygon) }
+        if (mapReady) {
+            availability.forEach { (point, isInside) ->
+                mapWebView.evaluateJavascript(
+                    "setStoryAreaAvailability(\"${point.id}\", ${isInside});",
+                    null
+                )
+            }
         }
     }
 
@@ -375,6 +375,22 @@ class MainActivity : AppCompatActivity(), LocationListener {
         storyPoints.forEach { point ->
             val coords = point.polygon.joinToString(prefix = "[", postfix = "]") {
                 "[${it.latitude}, ${it.longitude}]"
+            }
+            val title = point.title.replace("\"", "\\\"")
+            mapWebView.evaluateJavascript(
+                "renderStoryArea($coords, \"$title\", \"${point.id}\");",
+                null
+            )
+        }
+        storyAreasRendered = true
+    }
+
+    private inner class MapBridge {
+        @android.webkit.JavascriptInterface
+        fun onMemoryClick(storyId: String) {
+            val point = storyPoints.firstOrNull { it.id == storyId } ?: return
+            runOnUiThread {
+                triggerStoryEvent(point)
             }
             val title = point.title.replace("\"", "\\\"")
             mapWebView.evaluateJavascript("renderStoryArea($coords, \"$title\");", null)

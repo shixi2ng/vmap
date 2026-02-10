@@ -67,7 +67,8 @@
     let trackPolyline = null;
     let trackPoints = [];
     let rasterLayer = null;
-    let storyAreaLayers = [];
+    const storyAreas = {};
+    const storyAreaStates = {};
 
     const GEO_CONFIG = {
       tileSize: 256,
@@ -134,8 +135,8 @@
       trackPolyline.setLatLngs(trackPoints);
     }
 
-    function renderStoryArea(latLngs, label) {
-      if (!map || !Array.isArray(latLngs)) {
+    function renderStoryArea(latLngs, label, storyId) {
+      if (!map || !Array.isArray(latLngs) || !storyId) {
         return;
       }
       const polygon = L.polygon(latLngs, {
@@ -144,11 +145,59 @@
         fillColor: "#F4A6A6",
         fillOpacity: 0.2,
       }).addTo(map);
+      const center = polygon.getBounds().getCenter();
+      storyAreas[storyId] = { polygon, center, popup: null };
+      storyAreaStates[storyId] = false;
       if (label) {
         polygon.bindTooltip(label, { direction: "top" });
       }
-      storyAreaLayers.push(polygon);
+      polygon.on("click", () => {
+        showStoryAreaButton(storyId);
+      });
     }
+
+    function showStoryAreaButton(storyId) {
+      const area = storyAreas[storyId];
+      if (!map || !area) {
+        return;
+      }
+      const enabled = storyAreaStates[storyId];
+      const disabledAttr = enabled ? "" : "disabled";
+      const buttonHtml = `
+        <button type="button" class="memory-btn" data-story-id="${storyId}" ${disabledAttr}>
+          回忆
+        </button>
+      `;
+      if (!area.popup) {
+        area.popup = L.popup({ closeButton: true, autoPan: true });
+      }
+      area.popup.setLatLng(area.center).setContent(buttonHtml).openOn(map);
+    }
+
+    function setStoryAreaAvailability(storyId, available) {
+      if (!storyId || !(storyId in storyAreaStates)) {
+        return;
+      }
+      storyAreaStates[storyId] = Boolean(available);
+      const area = storyAreas[storyId];
+      if (area && area.popup && map && map.hasLayer(area.popup)) {
+        showStoryAreaButton(storyId);
+      }
+    }
+
+    document.addEventListener("click", (event) => {
+      const target = event.target;
+      if (!target || !target.classList.contains("memory-btn")) {
+        return;
+      }
+      if (target.disabled) {
+        return;
+      }
+      const storyId = target.getAttribute("data-story-id");
+      if (storyId && window.Android && typeof window.Android.onMemoryClick === "function") {
+        window.Android.onMemoryClick(storyId);
+      }
+    });
 
     const statusEl = document.getElementById("status");
     const tileFitButton = document.getElementById("tile-fit");
