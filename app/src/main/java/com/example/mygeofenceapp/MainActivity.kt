@@ -6,7 +6,11 @@ import android.content.pm.PackageManager
 import android.location.Location
 import android.location.LocationListener
 import android.location.LocationManager
+import android.os.Build
 import android.os.Bundle
+import android.os.VibrationEffect
+import android.os.Vibrator
+import android.os.VibratorManager
 import android.view.View
 import android.widget.Button
 import android.widget.TextView
@@ -212,6 +216,7 @@ class MainActivity : AppCompatActivity(), LocationListener {
         }
 
         updateMapLocation(location)
+        checkStoryAreaArrival(location)
         if (isTracking) {
             appendTrackingPoint(location)
         }
@@ -358,8 +363,11 @@ class MainActivity : AppCompatActivity(), LocationListener {
 
     private fun triggerStoryEvent(point: StoryPoint) {
         point.isUnlocked = true // 标记为已触发，避免重复弹窗
+        activeStoryPoint = point
+        vibrateOnStoryArrival()
 
         runOnUiThread {
+            Toast.makeText(this, "你已到达 ${point.title}，触发记忆线索", Toast.LENGTH_SHORT).show()
             // 使用复古风格的 Dialog 询问用户
             AlertDialog.Builder(this, R.style.RetroDialogTheme)
                 .setTitle("发现线索：${point.title}")
@@ -375,6 +383,70 @@ class MainActivity : AppCompatActivity(), LocationListener {
                 }
                 .setNegativeButton("忽略", null)
                 .show()
+        }
+    }
+
+    private fun checkStoryAreaArrival(location: Location) {
+        if (storyPoints.isEmpty()) {
+            return
+        }
+        val current = GeoPoint(location.latitude, location.longitude)
+        val arrivedStory = storyPoints.firstOrNull { point ->
+            !point.isUnlocked && isPointInsidePolygon(current, point.polygon)
+        }
+
+        if (arrivedStory == null) {
+            activeStoryPoint = null
+            return
+        }
+
+        if (activeStoryPoint?.id == arrivedStory.id) {
+            return
+        }
+
+        triggerStoryEvent(arrivedStory)
+    }
+
+    private fun isPointInsidePolygon(point: GeoPoint, polygon: List<GeoPoint>): Boolean {
+        if (polygon.size < 3) {
+            return false
+        }
+        var inside = false
+        var j = polygon.lastIndex
+        for (i in polygon.indices) {
+            val xi = polygon[i].longitude
+            val yi = polygon[i].latitude
+            val xj = polygon[j].longitude
+            val yj = polygon[j].latitude
+
+            val intersects = ((yi > point.latitude) != (yj > point.latitude)) &&
+                (point.longitude < (xj - xi) * (point.latitude - yi) / (yj - yi) + xi)
+            if (intersects) {
+                inside = !inside
+            }
+            j = i
+        }
+        return inside
+    }
+
+    private fun vibrateOnStoryArrival() {
+        val vibrator = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            val manager = getSystemService(VIBRATOR_MANAGER_SERVICE) as VibratorManager
+            manager.defaultVibrator
+        } else {
+            @Suppress("DEPRECATION")
+            getSystemService(VIBRATOR_SERVICE) as Vibrator
+        }
+
+        if (!vibrator.hasVibrator()) {
+            return
+        }
+
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            vibrator.vibrate(VibrationEffect.createOneShot(400L, VibrationEffect.DEFAULT_AMPLITUDE))
+        } else {
+            @Suppress("DEPRECATION")
+            vibrator.vibrate(400L)
         }
     }
 
