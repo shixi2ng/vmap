@@ -135,8 +135,8 @@
       trackPolyline.setLatLngs(trackPoints);
     }
 
-    function renderStoryArea(storyId, latLngs, label) {
-      if (!map || !storyId || !Array.isArray(latLngs) || latLngs.length === 0) {
+    function renderStoryArea(latLngs, label, storyId) {
+      if (!map || !Array.isArray(latLngs) || !storyId) {
         return;
       }
       const polygon = L.polygon(latLngs, {
@@ -148,15 +148,8 @@
       if (label) {
         polygon.bindTooltip(label, { direction: "top" });
       }
-      const center = polygon.getBounds().getCenter();
-      storyAreas[storyId] = {
-        polygon,
-        center,
-        popup: null,
-      };
-      storyAreaStates[storyId] = true;
       polygon.on("click", () => {
-        triggerMemoryFromMap(storyId);
+        showStoryAreaButton(storyId);
       });
     }
 
