@@ -57,6 +57,10 @@
           transform: translate(-50%, -50%);
           pointer-events: none;
         }
+        .footprint-glyph {
+          display: inline-block;
+          transform-origin: center center;
+        }
     </style>
 </head>
 <body>
@@ -74,6 +78,8 @@
     let userIcon = null;
     let trackPoints = [];
     let trackFootprints = null;
+    let footprintRemainderMeters = 0;
+    const FOOTPRINT_STEP_METERS = 4;
     let rasterLayer = null;
     const storyAreas = {};
 
@@ -114,10 +120,64 @@
         return;
       }
       trackPoints = [];
+      footprintRemainderMeters = 0;
       if (!trackFootprints) {
         trackFootprints = L.layerGroup().addTo(map);
       } else {
         trackFootprints.clearLayers();
+      }
+    }
+
+    function createFootprintIcon(rotationDeg) {
+      const safeDeg = Number.isFinite(rotationDeg) ? rotationDeg : 0;
+      return L.divIcon({
+        className: "footprint-marker",
+        html: `<span class="footprint-glyph" style="transform: rotate(${safeDeg.toFixed(1)}deg);">👣</span>`,
+        iconSize: [16, 16],
+      });
+    }
+
+    function calculateFootprintRotationDeg(prevLatLng, nextLatLng) {
+      if (!prevLatLng || !nextLatLng) {
+        return 0;
+      }
+      const dLat = nextLatLng[0] - prevLatLng[0];
+      const dLng = nextLatLng[1] - prevLatLng[1];
+      if (Math.abs(dLat) < 1e-9 && Math.abs(dLng) < 1e-9) {
+        return 0;
+      }
+      return Math.atan2(dLng, dLat) * (180 / Math.PI);
+    }
+
+    function drawFootprintsBetween(prevLatLng, nextLatLng) {
+      if (!map || !trackFootprints || !prevLatLng || !nextLatLng) {
+        return;
+      }
+      const p1 = L.latLng(prevLatLng[0], prevLatLng[1]);
+      const p2 = L.latLng(nextLatLng[0], nextLatLng[1]);
+      const segmentDistance = map.distance(p1, p2);
+      if (!Number.isFinite(segmentDistance) || segmentDistance <= 0.5) {
+        return;
+      }
+
+      const rotationDeg = calculateFootprintRotationDeg(prevLatLng, nextLatLng);
+      const footprintIcon = createFootprintIcon(rotationDeg);
+
+      let nextOffset = footprintRemainderMeters > 0
+        ? footprintRemainderMeters
+        : FOOTPRINT_STEP_METERS;
+
+      while (nextOffset <= segmentDistance) {
+        const ratio = nextOffset / segmentDistance;
+        const lat = p1.lat + (p2.lat - p1.lat) * ratio;
+        const lng = p1.lng + (p2.lng - p1.lng) * ratio;
+        L.marker([lat, lng], { icon: footprintIcon, interactive: false }).addTo(trackFootprints);
+        nextOffset += FOOTPRINT_STEP_METERS;
+      }
+
+      footprintRemainderMeters = nextOffset - segmentDistance;
+      if (footprintRemainderMeters >= FOOTPRINT_STEP_METERS) {
+        footprintRemainderMeters = footprintRemainderMeters % FOOTPRINT_STEP_METERS;
       }
     }
 
@@ -126,16 +186,16 @@
         return;
       }
       const latLng = [lat, lon];
+      const prev = trackPoints.length > 0 ? trackPoints[trackPoints.length - 1] : null;
       trackPoints.push(latLng);
 
-      if (trackFootprints) {
-        const footprintIcon = L.divIcon({
-          className: "footprint-marker",
-          html: "👣",
-          iconSize: [16, 16],
-        });
-        L.marker(latLng, { icon: footprintIcon, interactive: false }).addTo(trackFootprints);
+      if (trackPoints.length === 1 && trackFootprints) {
+        const startIcon = createFootprintIcon(0);
+        L.marker(latLng, { icon: startIcon, interactive: false }).addTo(trackFootprints);
+        return;
       }
+
+      drawFootprintsBetween(prev, latLng);
     }
 
     function finishTrackLine() {
