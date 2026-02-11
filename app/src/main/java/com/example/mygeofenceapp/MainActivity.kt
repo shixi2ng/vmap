@@ -98,6 +98,7 @@ class MainActivity : AppCompatActivity(), LocationListener {
         mapWebView.settings.allowUniversalAccessFromFileURLs = true
         mapWebView.settings.cacheMode = WebSettings.LOAD_NO_CACHE
         mapWebView.clearCache(true)
+        mapWebView.addJavascriptInterface(MapBridge(), "Android")
         mapWebView.webViewClient = object : WebViewClient() {
             override fun shouldInterceptRequest(
                 view: WebView,
@@ -335,8 +336,9 @@ class MainActivity : AppCompatActivity(), LocationListener {
                 "[${it.latitude}, ${it.longitude}]"
             }
             val title = point.title.replace("\"", "\\\"")
+            val id = point.id.replace("\\", "\\\\").replace("\"", "\\\"")
             mapWebView.evaluateJavascript(
-                "renderStoryArea($coords, \"$title\");",
+                "renderStoryArea(\"$id\", $coords, \"$title\");",
                 null
             )
         }
