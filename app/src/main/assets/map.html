@@ -72,12 +72,10 @@
     let userMarker = null;
     let hasCentered = false;
     let userIcon = null;
-    let trackPolyline = null;
     let trackPoints = [];
     let trackFootprints = null;
     let rasterLayer = null;
     const storyAreas = {};
-    const storyAreaStates = {};
 
     const GEO_CONFIG = {
       tileSize: 256,
@@ -116,15 +114,6 @@
         return;
       }
       trackPoints = [];
-      if (trackPolyline) {
-        map.removeLayer(trackPolyline);
-      }
-      trackPolyline = L.polyline(trackPoints, {
-        color: "#F08C00",
-        weight: 3,
-        opacity: 0.35,
-        lineJoin: "round",
-      }).addTo(map);
       if (!trackFootprints) {
         trackFootprints = L.layerGroup().addTo(map);
       } else {
@@ -133,12 +122,11 @@
     }
 
     function addTrackPoint(lat, lon) {
-      if (!map || !trackPolyline) {
+      if (!map) {
         return;
       }
       const latLng = [lat, lon];
       trackPoints.push(latLng);
-      trackPolyline.setLatLngs(trackPoints);
 
       if (trackFootprints) {
         const footprintIcon = L.divIcon({
@@ -151,10 +139,28 @@
     }
 
     function finishTrackLine() {
-      if (!map || !trackPolyline) {
-        return;
+      return;
+    }
+
+    function isPointInPolygon(point, polygonLatLngs) {
+      if (!point || !Array.isArray(polygonLatLngs) || polygonLatLngs.length < 3) {
+        return false;
       }
-      trackPolyline.setLatLngs(trackPoints);
+      let inside = false;
+      let j = polygonLatLngs.length - 1;
+      for (let i = 0; i < polygonLatLngs.length; i += 1) {
+        const xi = polygonLatLngs[i][1];
+        const yi = polygonLatLngs[i][0];
+        const xj = polygonLatLngs[j][1];
+        const yj = polygonLatLngs[j][0];
+        const intersect = (yi > point.lat) !== (yj > point.lat)
+          && point.lng < ((xj - xi) * (point.lat - yi)) / (yj - yi) + xi;
+        if (intersect) {
+          inside = !inside;
+        }
+        j = i;
+      }
+      return inside;
     }
 
     function renderStoryArea(storyId, latLngs, label) {
@@ -165,55 +171,22 @@
         color: "#D97A7A",
         weight: 2,
         fillColor: "#F4A6A6",
-        fillOpacity: 0.2,
+        fillOpacity: 0.35,
       }).addTo(map);
       storyAreas[storyId] = {
         polygon,
-        popup: null,
-        center: polygon.getBounds().getCenter(),
+        latLngs,
       };
-      storyAreaStates[storyId] = true;
       if (label) {
         polygon.bindTooltip(label, { direction: "top" });
       }
       polygon.on("click", () => {
-        showStoryAreaButton(storyId);
+        if (!userMarker || !isPointInPolygon(userMarker.getLatLng(), latLngs)) {
+          window.alert("未进入回忆范围");
+          return;
+        }
+        triggerMemoryFromMap(storyId);
       });
-    }
-
-    function showStoryAreaButton(storyId) {
-      const area = storyAreas[storyId];
-      if (!map || !area) {
-        return;
-      }
-      const escapedStoryId = String(storyId)
-        .replace(/\\/g, "\\\\")
-        .replace(/'/g, "\\'");
-      const buttonHtml = `
-        <button
-          type="button"
-          class="memory-btn"
-          data-story-id="${storyId}"
-          onclick="triggerMemoryFromMap('${escapedStoryId}')"
-        >
-          回忆
-        </button>
-      `;
-      if (!area.popup) {
-        area.popup = L.popup({ closeButton: true, autoPan: true });
-      }
-      area.popup.setLatLng(area.center).setContent(buttonHtml).openOn(map);
-    }
-
-    function setStoryAreaAvailability(storyId, available) {
-      if (!storyId || !(storyId in storyAreaStates)) {
-        return;
-      }
-      storyAreaStates[storyId] = Boolean(available);
-      const area = storyAreas[storyId];
-      if (area && area.popup && map && map.hasLayer(area.popup)) {
-        showStoryAreaButton(storyId);
-      }
     }
 
     function triggerMemoryFromMap(storyId) {
@@ -224,14 +197,6 @@
         window.Android.onMemoryClick(storyId);
       }
     }
-
-    document.addEventListener("click", (event) => {
-      const target = event.target;
-      if (!target || !target.classList.contains("memory-btn")) {
-        return;
-      }
-      triggerMemoryFromMap(target.getAttribute("data-story-id"));
-    });
 
     window.triggerMemoryFromMap = triggerMemoryFromMap;
 

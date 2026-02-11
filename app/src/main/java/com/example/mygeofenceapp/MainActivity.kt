@@ -216,7 +216,6 @@ class MainActivity : AppCompatActivity(), LocationListener {
         }
 
         updateMapLocation(location)
-        checkStoryAreaArrival(location)
         if (isTracking) {
             appendTrackingPoint(location)
         }
@@ -356,13 +355,17 @@ class MainActivity : AppCompatActivity(), LocationListener {
         fun onMemoryClick(storyId: String) {
             val point = storyPoints.firstOrNull { it.id == storyId } ?: return
             runOnUiThread {
+                val current = lastLocation?.let { GeoPoint(it.latitude, it.longitude) }
+                if (current == null || !isPointInsidePolygon(current, point.polygon)) {
+                    Toast.makeText(this@MainActivity, "未进入回忆范围", Toast.LENGTH_SHORT).show()
+                    return@runOnUiThread
+                }
                 triggerStoryEvent(point)
             }
         }
     }
 
     private fun triggerStoryEvent(point: StoryPoint) {
-        point.isUnlocked = true // 标记为已触发，避免重复弹窗
         activeStoryPoint = point
         vibrateOnStoryArrival()
 
@@ -384,27 +387,6 @@ class MainActivity : AppCompatActivity(), LocationListener {
                 .setNegativeButton("忽略", null)
                 .show()
         }
-    }
-
-    private fun checkStoryAreaArrival(location: Location) {
-        if (storyPoints.isEmpty()) {
-            return
-        }
-        val current = GeoPoint(location.latitude, location.longitude)
-        val arrivedStory = storyPoints.firstOrNull { point ->
-            !point.isUnlocked && isPointInsidePolygon(current, point.polygon)
-        }
-
-        if (arrivedStory == null) {
-            activeStoryPoint = null
-            return
-        }
-
-        if (activeStoryPoint?.id == arrivedStory.id) {
-            return
-        }
-
-        triggerStoryEvent(arrivedStory)
     }
 
     private fun isPointInsidePolygon(point: GeoPoint, polygon: List<GeoPoint>): Boolean {
